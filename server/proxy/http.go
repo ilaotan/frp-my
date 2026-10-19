@@ -15,6 +15,7 @@
 package proxy
 
 import (
+	"fmt"
 	"io"
 	"net"
 	"reflect"
@@ -54,6 +55,11 @@ func NewHTTPProxy(baseProxy *BaseProxy) Proxy {
 
 func (pxy *HTTPProxy) Run() (remoteAddr string, err error) {
 	xl := pxy.xl
+	allowList, err := vhost.NewIPAllowList(pxy.cfg.AllowIPs)
+	if err != nil {
+		err = fmt.Errorf("proxy [%s] has invalid allowIPs: %w", pxy.name, err)
+		return
+	}
 	routeConfig := vhost.RouteConfig{
 		RewriteHost:     pxy.cfg.HostHeaderRewrite,
 		RouteByHTTPUser: pxy.cfg.RouteByHTTPUser,
@@ -61,6 +67,9 @@ func (pxy *HTTPProxy) Run() (remoteAddr string, err error) {
 		ResponseHeaders: pxy.cfg.ResponseHeaders.Set,
 		Username:        pxy.cfg.HTTPUser,
 		Password:        pxy.cfg.HTTPPassword,
+		AuthHeader:      pxy.cfg.HTTPAuthHeader,
+		AuthPagePath:    pxy.cfg.HTTPAuthPagePath,
+		AllowList:       allowList,
 		CreateConnFn:    pxy.GetRealConn,
 	}
 

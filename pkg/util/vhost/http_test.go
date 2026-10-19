@@ -429,3 +429,370 @@ func TestGetRequestRouteUser(t *testing.T) {
 		require.Empty(t, getRequestRouteUser(req))
 	})
 }
+
+func TestCheckRouteAuthByRequestCustomHeader(t *testing.T) {
+	rc := &RouteConfig{
+		Username:   "alice",
+		Password:   "secret",
+		AuthHeader: "X-FRP-Auth",
+	}
+
+	t.Run("accepts credentials in custom header", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("X-FRP-Auth", httppkg.BasicAuth("alice", "secret"))
+		require.True(t, checkRouteAuthByRequest(req, rc))
+	})
+
+	t.Run("accepts bare base64 credentials", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("X-FRP-Auth", strings.TrimPrefix(httppkg.BasicAuth("alice", "secret"), "Basic "))
+		require.True(t, checkRouteAuthByRequest(req, rc))
+	})
+
+	t.Run("ignores authorization header", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.SetBasicAuth("alice", "secret")
+		require.False(t, checkRouteAuthByRequest(req, rc))
+	})
+
+	t.Run("rejects wrong password in custom header", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("X-FRP-Auth", httppkg.BasicAuth("alice", "wrong"))
+		require.False(t, checkRouteAuthByRequest(req, rc))
+	})
+}
+
+// dialTestVhost starts the reverse proxy on an internal listener and returns the
+// client side of a piped connection.
+func dialTestVhost(t *testing.T, rp http.Handler) net.Conn {
+	t.Helper()
+
+	listener := netpkg.NewInternalListener()
+	server := &http.Server{Handler: rp, ReadHeaderTimeout: time.Second}
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- server.Serve(listener)
+	}()
+	t.Cleanup(func() {
+		require.NoError(t, server.Close())
+		require.ErrorIs(t, <-serveErr, http.ErrServerClosed)
+	})
+
+	client, incoming := net.Pipe()
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = incoming.Close()
+	})
+	require.NoError(t, client.SetDeadline(time.Now().Add(5*time.Second)))
+	require.NoError(t, listener.PutConn(incoming))
+	return client
+}
+
+func TestCustomAuthHeaderIsStrippedAndAuthorizationPassesThrough(t *testing.T) {
+	remote, backend := net.Pipe()
+	defer remote.Close()
+	defer backend.Close()
+	require.NoError(t, backend.SetDeadline(time.Now().Add(5*time.Second)))
+
+	rp := NewHTTPReverseProxy(HTTPReverseProxyOptions{}, NewRouters())
+	require.NoError(t, rp.Register(RouteConfig{
+		Domain:     "target.example.com",
+		Username:   "alice",
+		Password:   "secret",
+		AuthHeader: "X-FRP-Auth",
+		CreateConnFn: func(string) (net.Conn, error) {
+			return remote, nil
+		},
+	}))
+
+	client := dialTestVhost(t, rp)
+	_, err := io.WriteString(client, "GET / HTTP/1.1\r\nHost: target.example.com\r\n"+
+		"Authorization: Bearer origin-token\r\n"+
+		"X-FRP-Auth: "+httppkg.BasicAuth("alice", "secret")+"\r\n\r\n")
+	require.NoError(t, err)
+
+	req, err := http.ReadRequest(bufio.NewReader(backend))
+	require.NoError(t, err)
+	defer req.Body.Close()
+	require.Equal(t, "Bearer origin-token", req.Header.Get("Authorization"))
+	require.Empty(t, req.Header.Get("X-FRP-Auth"))
+
+	_, err = io.WriteString(backend, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+	require.NoError(t, err)
+
+	response, err := http.ReadResponse(bufio.NewReader(client), nil)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, http.StatusOK, response.StatusCode)
+}
+
+func TestCustomAuthHeaderDoesNotTriggerBrowserLogin(t *testing.T) {
+	rp := NewHTTPReverseProxy(HTTPReverseProxyOptions{}, NewRouters())
+	require.NoError(t, rp.Register(RouteConfig{
+		Domain:     "target.example.com",
+		Username:   "alice",
+		Password:   "secret",
+		AuthHeader: "X-FRP-Auth",
+		CreateConnFn: func(string) (net.Conn, error) {
+			t.Fatal("backend must not be reached when auth fails")
+			return nil, nil
+		},
+	}))
+
+	client := dialTestVhost(t, rp)
+	// Standard credentials must be ignored so that the origin keeps its Authorization header.
+	_, err := io.WriteString(client, "GET / HTTP/1.1\r\nHost: target.example.com\r\n"+
+		"Authorization: "+httppkg.BasicAuth("alice", "secret")+"\r\n\r\n")
+	require.NoError(t, err)
+
+	response, err := http.ReadResponse(bufio.NewReader(client), nil)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, http.StatusUnauthorized, response.StatusCode)
+	require.Empty(t, response.Header.Get("WWW-Authenticate"))
+}
+
+const testLoginPath = defaultAuthPagePath + "/login"
+
+// doRequest sends a raw HTTP request through a fresh test server and returns the
+// response with its body already read.
+func doRequest(t *testing.T, rp http.Handler, raw string) (*http.Response, string) {
+	t.Helper()
+
+	client := dialTestVhost(t, rp)
+	_, err := io.WriteString(client, raw)
+	require.NoError(t, err)
+
+	resp, err := http.ReadResponse(bufio.NewReader(client), nil)
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	return resp, string(body)
+}
+
+func postLogin(t *testing.T, rp http.Handler, user, passwd, redirect string) (*http.Response, string) {
+	t.Helper()
+
+	form := "username=" + user + "&password=" + passwd + "&redirect=" + redirect
+	raw := fmt.Sprintf("POST %s HTTP/1.1\r\nHost: target.example.com\r\nAccept: text/html\r\n"+
+		"Content-Type: application/x-www-form-urlencoded\r\nContent-Length: %d\r\n\r\n%s",
+		testLoginPath, len(form), form)
+	return doRequest(t, rp, raw)
+}
+
+func newAuthPageProxy(t *testing.T, createConn CreateConnFunc) *HTTPReverseProxy {
+	t.Helper()
+
+	rp := NewHTTPReverseProxy(HTTPReverseProxyOptions{}, NewRouters())
+	require.NoError(t, rp.Register(RouteConfig{
+		Domain:       "target.example.com",
+		Username:     "alice",
+		Password:     "secret",
+		AuthHeader:   "X-FRP-Auth",
+		CreateConnFn: createConn,
+	}))
+	return rp
+}
+
+func TestAuthLoginPageFlow(t *testing.T) {
+	remote, backend := net.Pipe()
+	defer remote.Close()
+	defer backend.Close()
+	require.NoError(t, backend.SetDeadline(time.Now().Add(5*time.Second)))
+
+	rp := newAuthPageProxy(t, func(string) (net.Conn, error) { return remote, nil })
+
+	t.Run("browser navigation is redirected to the login page", func(t *testing.T) {
+		resp, _ := doRequest(t, rp, "GET /page?a=1 HTTP/1.1\r\nHost: target.example.com\r\nAccept: text/html\r\n\r\n")
+		require.Equal(t, http.StatusFound, resp.StatusCode)
+		require.Contains(t, resp.Header.Get("Location"), testLoginPath+"?redirect=")
+	})
+
+	t.Run("login page renders a form", func(t *testing.T) {
+		resp, body := doRequest(t, rp, "GET "+testLoginPath+"?redirect=%2Fpage HTTP/1.1\r\n"+
+			"Host: target.example.com\r\nAccept: text/html\r\n\r\n")
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.Contains(t, body, `name="username"`)
+		require.Contains(t, body, `name="password"`)
+		require.Contains(t, body, `value="/page"`)
+	})
+
+	t.Run("wrong credentials are rejected", func(t *testing.T) {
+		resp, body := postLogin(t, rp, "alice", "wrong", "%2Fpage")
+		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+		require.Contains(t, body, "用户名或密码错误")
+		require.Empty(t, resp.Cookies())
+	})
+
+	t.Run("open redirect is not allowed", func(t *testing.T) {
+		resp, _ := postLogin(t, rp, "alice", "secret", "//evil.example.com")
+		require.Equal(t, http.StatusFound, resp.StatusCode)
+		require.Equal(t, "/", resp.Header.Get("Location"))
+	})
+
+	t.Run("correct credentials set a cookie that grants access", func(t *testing.T) {
+		resp, _ := postLogin(t, rp, "alice", "secret", "%2Fpage")
+		require.Equal(t, http.StatusFound, resp.StatusCode)
+		require.Equal(t, "/page", resp.Header.Get("Location"))
+
+		cookies := resp.Cookies()
+		require.Len(t, cookies, 1)
+		require.True(t, cookies[0].HttpOnly)
+		require.Len(t, cookies[0].Name, len("frp_auth_")+16)
+
+		client := dialTestVhost(t, rp)
+		_, err := io.WriteString(client, "GET /page HTTP/1.1\r\nHost: target.example.com\r\n"+
+			"Accept: text/html\r\nAuthorization: Bearer origin-token\r\n"+
+			"Cookie: theme=dark; "+cookies[0].Name+"="+cookies[0].Value+"; lang=zh\r\n\r\n")
+		require.NoError(t, err)
+
+		req, err := http.ReadRequest(bufio.NewReader(backend))
+		require.NoError(t, err)
+		defer req.Body.Close()
+		require.Equal(t, "Bearer origin-token", req.Header.Get("Authorization"))
+		require.Empty(t, req.Header.Get("X-FRP-Auth"))
+		// The frp session cookie is dropped, while the origin's own cookies are kept.
+		require.Equal(t, "theme=dark; lang=zh", req.Header.Get("Cookie"))
+
+		_, err = io.WriteString(backend, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+		require.NoError(t, err)
+
+		response, err := http.ReadResponse(bufio.NewReader(client), nil)
+		require.NoError(t, err)
+		defer response.Body.Close()
+		require.Equal(t, http.StatusOK, response.StatusCode)
+	})
+
+	t.Run("api clients get 401 without a challenge", func(t *testing.T) {
+		resp, _ := doRequest(t, rp, "GET /api HTTP/1.1\r\nHost: target.example.com\r\nAccept: */*\r\n\r\n")
+		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+		require.Empty(t, resp.Header.Get("WWW-Authenticate"))
+	})
+}
+
+func TestAuthCookieValidation(t *testing.T) {
+	rc := &RouteConfig{
+		Domain:     "target.example.com",
+		Username:   "alice",
+		Password:   "secret",
+		AuthHeader: "X-FRP-Auth",
+	}
+	now := time.Now()
+
+	t.Run("round trip", func(t *testing.T) {
+		value := rc.signAuthCookie(now.Add(time.Hour).Unix())
+		require.True(t, rc.verifyAuthCookie(value, now))
+	})
+
+	t.Run("expired cookie is rejected", func(t *testing.T) {
+		value := rc.signAuthCookie(now.Add(-time.Minute).Unix())
+		require.False(t, rc.verifyAuthCookie(value, now))
+	})
+
+	t.Run("tampered signature is rejected", func(t *testing.T) {
+		value := rc.signAuthCookie(now.Add(time.Hour).Unix())
+		require.False(t, rc.verifyAuthCookie(value+"x", now))
+	})
+
+	t.Run("tampered expiry is rejected", func(t *testing.T) {
+		value := rc.signAuthCookie(now.Add(time.Hour).Unix())
+		parts := strings.Split(value, ".")
+		require.Len(t, parts, 3)
+		forged := parts[0] + "." + fmt.Sprintf("%d", now.Add(100*time.Hour).Unix()) + "." + parts[2]
+		require.False(t, rc.verifyAuthCookie(forged, now))
+	})
+
+	t.Run("cookie from another route is rejected", func(t *testing.T) {
+		other := *rc
+		other.Password = "changed"
+		value := rc.signAuthCookie(now.Add(time.Hour).Unix())
+		require.False(t, other.verifyAuthCookie(value, now))
+	})
+
+	t.Run("plain auth header mode has no login page", func(t *testing.T) {
+		defaultHeader := &RouteConfig{Domain: "a", Username: "alice", Password: "secret"}
+		require.False(t, defaultHeader.authPageEnabled())
+	})
+}
+
+func TestAuthPagePath(t *testing.T) {
+	rc := &RouteConfig{
+		Domain:       "target.example.com",
+		Username:     "alice",
+		Password:     "secret",
+		AuthHeader:   "X-FRP-Auth",
+		AuthPagePath: "/_s3cr3t/entry/",
+	}
+
+	t.Run("trailing slash is normalized", func(t *testing.T) {
+		require.Equal(t, "/_s3cr3t/entry/login", rc.authLoginPath())
+		require.Equal(t, "/_s3cr3t/entry/logout", rc.authLogoutPath())
+	})
+
+	t.Run("only the configured path is reserved", func(t *testing.T) {
+		require.True(t, rc.authPageEnabled())
+		require.True(t, rc.isAuthPagePath("/_s3cr3t/entry/login"))
+		require.True(t, rc.isAuthPagePath("/_s3cr3t/entry/login/"))
+		require.False(t, rc.isAuthPagePath(defaultAuthPagePath+"/login"))
+		require.False(t, rc.isAuthPagePath("/"))
+	})
+
+	t.Run("empty path falls back to the default", func(t *testing.T) {
+		fallback := &RouteConfig{AuthHeader: "X-FRP-Auth", Username: "a", Password: "b"}
+		require.Equal(t, defaultAuthPagePath+"/login", fallback.authLoginPath())
+	})
+
+	t.Run("browser is redirected to the custom path", func(t *testing.T) {
+		rp := NewHTTPReverseProxy(HTTPReverseProxyOptions{}, NewRouters())
+		require.NoError(t, rp.Register(*rc))
+		resp, _ := doRequest(t, rp, "GET /page HTTP/1.1\r\nHost: target.example.com\r\nAccept: text/html\r\n\r\n")
+		require.Equal(t, http.StatusFound, resp.StatusCode)
+		require.Equal(t, "/_s3cr3t/entry/login?redirect=%2Fpage", resp.Header.Get("Location"))
+
+		resp, body := doRequest(t, rp, "GET /_s3cr3t/entry/login HTTP/1.1\r\nHost: target.example.com\r\nAccept: text/html\r\n\r\n")
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.Contains(t, body, `action="/_s3cr3t/entry/login"`)
+	})
+}
+
+func TestAllowIPsRejectsUntrustedClient(t *testing.T) {
+	allowList, err := NewIPAllowList([]string{"192.0.2.0/24"})
+	require.NoError(t, err)
+
+	rp := NewHTTPReverseProxy(HTTPReverseProxyOptions{}, NewRouters())
+	require.NoError(t, rp.Register(RouteConfig{
+		Domain:    "target.example.com",
+		Username:  "alice",
+		Password:  "secret",
+		AllowList: allowList,
+		CreateConnFn: func(string) (net.Conn, error) {
+			t.Fatal("backend must not be reached when the client IP is rejected")
+			return nil, nil
+		},
+	}))
+
+	t.Run("allowed client reaches the auth check", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Host = "target.example.com"
+		req.RemoteAddr = "192.0.2.10:1234"
+		rw := httptest.NewRecorder()
+
+		rp.ServeHTTP(rw, req)
+
+		// No credentials, so the request stops at the auth check instead of the IP check.
+		require.Equal(t, http.StatusUnauthorized, rw.Code)
+	})
+
+	t.Run("other clients are rejected before auth", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Host = "target.example.com"
+		req.RemoteAddr = "198.51.100.7:1234"
+		req.Header.Set("Authorization", httppkg.BasicAuth("alice", "secret"))
+		rw := httptest.NewRecorder()
+
+		rp.ServeHTTP(rw, req)
+
+		require.Equal(t, http.StatusForbidden, rw.Code)
+	})
+}

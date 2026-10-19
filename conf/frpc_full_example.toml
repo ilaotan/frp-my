@@ -250,6 +250,18 @@ localPort = 80
 # if not set, you can access this customDomains without certification
 httpUser = "admin"
 httpPassword = "admin"
+# By default the credentials above are read from the Authorization header
+# (Proxy-Authorization for proxy-mode requests). Set httpAuthHeader to use a
+# custom header instead, which leaves Authorization free for the local service.
+# When httpAuthHeader is set, frps serves a login page for browsers and keeps the
+# session in a signed cookie. By default the page lives at /.auth/login and
+# /.auth/logout; those paths are reserved and no longer reach the local service.
+# Use httpAuthPagePath to move them somewhere less guessable or collision free.
+# httpAuthHeader = "X-FRP-Auth"
+# httpAuthPagePath = "/_o7k2/entry"
+# Only allow requests from these client IPs. Entries can be single IPs or CIDR
+# blocks. If not set, every client is allowed. Only available for http type.
+# allowIPs = ["192.168.1.0/24", "203.0.113.7"]
 # if domain for frps is frps.com, then you can access [web01] proxy by URL http://web01.frps.com
 subdomain = "web01"
 customDomains = ["web01.yourdomain.com"]

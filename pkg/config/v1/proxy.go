@@ -324,6 +324,20 @@ type HTTPProxyConfig struct {
 	RequestHeaders    HeaderOperations `json:"requestHeaders,omitempty"`
 	ResponseHeaders   HeaderOperations `json:"responseHeaders,omitempty"`
 	RouteByHTTPUser   string           `json:"routeByHTTPUser,omitempty"`
+
+	// HTTPAuthHeader is the header used to carry the HTTP Basic credentials above.
+	// Empty keeps the standard behavior: Authorization for direct requests and
+	// Proxy-Authorization for proxy-mode requests. Set it to a custom header
+	// (e.g. "X-FRP-Auth") to leave Authorization free for the local service.
+	HTTPAuthHeader string `json:"httpAuthHeader,omitempty"`
+	// HTTPAuthPagePath is the base path of the frps login page used by browsers,
+	// e.g. "/my-auth" serves /my-auth/login and /my-auth/logout.
+	// Empty means the default "/.auth". Only used when httpAuthHeader is set.
+	HTTPAuthPagePath string `json:"httpAuthPagePath,omitempty"`
+	// AllowIPs restricts which client IPs can access this proxy.
+	// Entries can be single IPs ("1.2.3.4", "::1") or CIDR blocks ("10.0.0.0/8").
+	// Empty means any client is allowed. Only valid for http proxies.
+	AllowIPs []string `json:"allowIPs,omitempty"`
 }
 
 func (c *HTTPProxyConfig) MarshalToMsg(m *msg.NewProxy) {
@@ -335,9 +349,12 @@ func (c *HTTPProxyConfig) MarshalToMsg(m *msg.NewProxy) {
 	m.HostHeaderRewrite = c.HostHeaderRewrite
 	m.HTTPUser = c.HTTPUser
 	m.HTTPPwd = c.HTTPPassword
+	m.HTTPAuthHeader = c.HTTPAuthHeader
+	m.HTTPAuthPagePath = c.HTTPAuthPagePath
 	m.Headers = c.RequestHeaders.Set
 	m.ResponseHeaders = c.ResponseHeaders.Set
 	m.RouteByHTTPUser = c.RouteByHTTPUser
+	m.AllowIPs = c.AllowIPs
 }
 
 func (c *HTTPProxyConfig) UnmarshalFromMsg(m *msg.NewProxy) {
@@ -349,9 +366,12 @@ func (c *HTTPProxyConfig) UnmarshalFromMsg(m *msg.NewProxy) {
 	c.HostHeaderRewrite = m.HostHeaderRewrite
 	c.HTTPUser = m.HTTPUser
 	c.HTTPPassword = m.HTTPPwd
+	c.HTTPAuthHeader = m.HTTPAuthHeader
+	c.HTTPAuthPagePath = m.HTTPAuthPagePath
 	c.RequestHeaders.Set = m.Headers
 	c.ResponseHeaders.Set = m.ResponseHeaders
 	c.RouteByHTTPUser = m.RouteByHTTPUser
+	c.AllowIPs = m.AllowIPs
 }
 
 func (c *HTTPProxyConfig) Clone() ProxyConfigurer {
@@ -361,6 +381,7 @@ func (c *HTTPProxyConfig) Clone() ProxyConfigurer {
 	out.Locations = slices.Clone(c.Locations)
 	out.RequestHeaders = c.RequestHeaders.Clone()
 	out.ResponseHeaders = c.ResponseHeaders.Clone()
+	out.AllowIPs = slices.Clone(c.AllowIPs)
 	return &out
 }
 

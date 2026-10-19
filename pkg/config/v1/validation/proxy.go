@@ -17,9 +17,11 @@ package validation
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"slices"
 	"strings"
 
+	"golang.org/x/net/http/httpguts"
 	"k8s.io/apimachinery/pkg/util/validation"
 
 	v1 "github.com/fatedier/frp/pkg/config/v1"
@@ -148,7 +150,74 @@ func validateTCPMuxProxyConfigForClient(c *v1.TCPMuxProxyConfig) error {
 }
 
 func validateHTTPProxyConfigForClient(c *v1.HTTPProxyConfig) error {
-	return validateDomainConfigForClient(&c.DomainConfig)
+	if err := validateDomainConfigForClient(&c.DomainConfig); err != nil {
+		return err
+	}
+	if err := validateAllowIPs(c.AllowIPs); err != nil {
+		return err
+	}
+	if err := validateHTTPAuthHeader(c); err != nil {
+		return err
+	}
+	return validateHTTPAuthPagePath(c)
+}
+
+// validateHTTPAuthPagePath checks that the configured login page base path is a
+// plain absolute path that can't be resolved to something else.
+func validateHTTPAuthPagePath(c *v1.HTTPProxyConfig) error {
+	pagePath := c.HTTPAuthPagePath
+	if pagePath == "" {
+		return nil
+	}
+	if c.HTTPAuthHeader == "" {
+		return errors.New("httpAuthPagePath requires httpAuthHeader to be set")
+	}
+	if !strings.HasPrefix(pagePath, "/") || pagePath == "/" {
+		return fmt.Errorf("httpAuthPagePath %q should be an absolute path like \"/my-auth\"", pagePath)
+	}
+	if strings.ContainsAny(pagePath, "?# \t\r\n") {
+		return fmt.Errorf("httpAuthPagePath %q should not contain whitespace, '?' or '#'", pagePath)
+	}
+	if strings.Contains(pagePath, "..") || strings.Contains(pagePath, "//") {
+		return fmt.Errorf("httpAuthPagePath %q should not contain '..' or '//'", pagePath)
+	}
+	return nil
+}
+
+// validateHTTPAuthHeader makes sure the configured credential header is a legal
+// HTTP header name and is actually used by some credentials.
+func validateHTTPAuthHeader(c *v1.HTTPProxyConfig) error {
+	if c.HTTPAuthHeader == "" {
+		return nil
+	}
+	if !httpguts.ValidHeaderFieldName(c.HTTPAuthHeader) {
+		return fmt.Errorf("httpAuthHeader %q is not a valid HTTP header name", c.HTTPAuthHeader)
+	}
+	if c.HTTPUser == "" && c.HTTPPassword == "" {
+		return errors.New("httpAuthHeader is set but httpUser and httpPassword are both empty")
+	}
+	return nil
+}
+
+// validateAllowIPs checks that every entry is a valid IP address or CIDR block,
+// so a typo is reported when the config is loaded instead of failing at runtime.
+func validateAllowIPs(allowIPs []string) error {
+	for _, raw := range allowIPs {
+		entry := strings.TrimSpace(raw)
+		if entry == "" {
+			return errors.New("allowIPs should not contain empty entries")
+		}
+		if strings.Contains(entry, "/") {
+			if _, err := netip.ParsePrefix(entry); err != nil {
+				return fmt.Errorf("allowIPs contains invalid CIDR %q", entry)
+			}
+			continue
+		}
+		if _, err := netip.ParseAddr(entry); err != nil {
+			return fmt.Errorf("allowIPs contains invalid IP %q", entry)
+		}
+	}
+	return nil
 }
 
 func validateHTTPSProxyConfigForClient(c *v1.HTTPSProxyConfig) error {

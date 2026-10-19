@@ -124,6 +124,12 @@ type NewProxy struct {
 	Headers           map[string]string `json:"headers,omitempty"`
 	ResponseHeaders   map[string]string `json:"response_headers,omitempty"`
 	RouteByHTTPUser   string            `json:"route_by_http_user,omitempty"`
+	// AllowIPs restricts which client IPs can access this http proxy (http only).
+	AllowIPs []string `json:"allow_ips,omitempty"`
+	// HTTPAuthHeader overrides the header carrying http_user/http_pwd (http only).
+	HTTPAuthHeader string `json:"http_auth_header,omitempty"`
+	// HTTPAuthPagePath overrides the base path of the frps login page (http only).
+	HTTPAuthPagePath string `json:"http_auth_page_path,omitempty"`
 
 	// stcp, sudp, xtcp
 	Sk         string   `json:"sk,omitempty"`

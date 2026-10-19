@@ -74,3 +74,107 @@ func TestValidateDomainConfigForServerRejectsSubdomainHostCaseInsensitively(t *t
 		})
 	}
 }
+
+func TestValidateHTTPAuthPagePath(t *testing.T) {
+	tests := []struct {
+		name     string
+		authHdr  string
+		pagePath string
+		wantErr  bool
+	}{
+		{name: "empty path is fine", authHdr: "X-FRP-Auth"},
+		{name: "custom path", authHdr: "X-FRP-Auth", pagePath: "/_s3cr3t/entry"},
+		{name: "trailing slash", authHdr: "X-FRP-Auth", pagePath: "/_s3cr3t/entry/"},
+		{name: "path without auth header", pagePath: "/_s3cr3t/entry", wantErr: true},
+		{name: "relative path", authHdr: "X-FRP-Auth", pagePath: "entry/login", wantErr: true},
+		{name: "root path", authHdr: "X-FRP-Auth", pagePath: "/", wantErr: true},
+		{name: "query string", authHdr: "X-FRP-Auth", pagePath: "/entry?x=1", wantErr: true},
+		{name: "dot segments", authHdr: "X-FRP-Auth", pagePath: "/entry/../admin", wantErr: true},
+		{name: "double slash", authHdr: "X-FRP-Auth", pagePath: "/entry//login", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateHTTPAuthPagePath(&v1.HTTPProxyConfig{
+				HTTPAuthHeader:   tc.authHdr,
+				HTTPAuthPagePath: tc.pagePath,
+			})
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestValidateHTTPProxyAuthFields(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     *v1.HTTPProxyConfig
+		wantErr bool
+	}{
+		{
+			name: "no auth fields",
+			cfg:  &v1.HTTPProxyConfig{},
+		},
+		{
+			name: "header with credentials",
+			cfg: &v1.HTTPProxyConfig{
+				HTTPUser:       "alice",
+				HTTPPassword:   "secret",
+				HTTPAuthHeader: "X-FRP-Auth",
+			},
+		},
+		{
+			name:    "header without credentials",
+			cfg:     &v1.HTTPProxyConfig{HTTPAuthHeader: "X-FRP-Auth"},
+			wantErr: true,
+		},
+		{
+			name: "invalid header name",
+			cfg: &v1.HTTPProxyConfig{
+				HTTPUser:       "alice",
+				HTTPPassword:   "secret",
+				HTTPAuthHeader: "X FRP Auth",
+			},
+			wantErr: true,
+		},
+		{
+			name: "ip and cidr entries",
+			cfg: &v1.HTTPProxyConfig{
+				AllowIPs: []string{"10.0.0.0/8", "192.168.1.10", "2001:db8::/32", "::1"},
+			},
+		},
+		{
+			name:    "invalid cidr",
+			cfg:     &v1.HTTPProxyConfig{AllowIPs: []string{"10.0.0.0/33"}},
+			wantErr: true,
+		},
+		{
+			name:    "invalid ip",
+			cfg:     &v1.HTTPProxyConfig{AllowIPs: []string{"10.0.0"}},
+			wantErr: true,
+		},
+		{
+			name:    "empty entry",
+			cfg:     &v1.HTTPProxyConfig{AllowIPs: []string{" "}},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// A domain is required by the same validator, so keep it valid to
+			// isolate the auth and allowIPs checks.
+			tc.cfg.CustomDomains = []string{"www.example.com"}
+
+			err := validateHTTPProxyConfigForClient(tc.cfg)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}

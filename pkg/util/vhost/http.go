@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"time"
 
 	libio "github.com/fatedier/golib/io"
@@ -31,9 +32,15 @@ import (
 
 	httppkg "github.com/fatedier/frp/pkg/util/http"
 	"github.com/fatedier/frp/pkg/util/log"
+	"github.com/fatedier/frp/pkg/util/util"
 )
 
 var ErrNoRouteFound = errors.New("no route found")
+
+const (
+	defaultAuthHeader      = "Authorization"
+	defaultProxyAuthHeader = "Proxy-Authorization"
+)
 
 type HTTPReverseProxyOptions struct {
 	ResponseHeaderTimeoutS int64
@@ -66,6 +73,15 @@ func NewHTTPReverseProxy(option HTTPReverseProxyOptions, vhostRouter *Routers) *
 
 			rc := req.Context().Value(RouteConfigKey).(*RouteConfig)
 			if rc != nil {
+				// Don't forward the credentials used to authenticate against frp to the
+				// local service, which may rely on the same header for its own auth.
+				if rc.authEnabled() {
+					req.Header.Del(rc.authHeaderName(reqRouteInfo.URLHost != ""))
+				}
+				if rc.authPageEnabled() {
+					stripAuthCookie(req.Header, rc.authCookieName())
+				}
+
 				if rc.RewriteHost != "" {
 					req.Host = rc.RewriteHost
 				}
@@ -184,25 +200,70 @@ func (rp *HTTPReverseProxy) CreateConnection(reqRouteInfo *RequestRouteInfo, byE
 	return nil, fmt.Errorf("%v: %s %s %s", ErrNoRouteFound, host, reqRouteInfo.URL, reqRouteInfo.HTTPUser)
 }
 
+func checkRouteAllowIP(req *http.Request, rc *RouteConfig) bool {
+	if rc == nil || rc.AllowList.Empty() {
+		return true
+	}
+	return rc.AllowList.ContainsRemoteAddr(req.RemoteAddr)
+}
+
+// authEnabled reports whether this route requires client authentication.
+func (rc *RouteConfig) authEnabled() bool {
+	return rc != nil && (rc.Username != "" || rc.Password != "")
+}
+
+// authHeaderName returns the header carrying the client credentials.
+//
+// A custom header can be configured so that frp authentication doesn't occupy
+// the standard Authorization header, which many local services use for their
+// own authentication.
+func (rc *RouteConfig) authHeaderName(proxyMode bool) string {
+	if rc != nil && rc.AuthHeader != "" {
+		return rc.AuthHeader
+	}
+	if proxyMode {
+		return defaultProxyAuthHeader
+	}
+	return defaultAuthHeader
+}
+
+// parseAuthCredentials parses `Basic base64(user:pass)`.
+// A bare base64 value is also accepted for convenience with custom headers.
+func parseAuthCredentials(value string) (username, password string, ok bool) {
+	if username, password, ok = httppkg.ParseBasicAuth(value); ok {
+		return username, password, true
+	}
+	decoded, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return "", "", false
+	}
+	before, after, found := strings.Cut(string(decoded), ":")
+	if !found {
+		return "", "", false
+	}
+	return before, after, true
+}
+
 func checkRouteAuthByRequest(req *http.Request, rc *RouteConfig) bool {
-	if rc == nil {
-		return true
-	}
-	if rc.Username == "" && rc.Password == "" {
+	if !rc.authEnabled() {
 		return true
 	}
 
-	if req.URL.Host != "" {
-		proxyAuth := req.Header.Get("Proxy-Authorization")
-		if proxyAuth == "" {
-			return false
-		}
-		user, passwd, ok := httppkg.ParseBasicAuth(proxyAuth)
-		return ok && user == rc.Username && passwd == rc.Password
+	// A session created on the frps login page is as good as sending the header.
+	if rc.hasValidAuthCookie(req) {
+		return true
 	}
 
-	user, passwd, ok := req.BasicAuth()
-	return ok && user == rc.Username && passwd == rc.Password
+	value := req.Header.Get(rc.authHeaderName(req.URL.Host != ""))
+	if value == "" {
+		return false
+	}
+	user, passwd, ok := parseAuthCredentials(value)
+	if !ok {
+		return false
+	}
+	return util.ConstantTimeEqString(user, rc.Username) &&
+		util.ConstantTimeEqString(passwd, rc.Password)
 }
 
 func (rp *HTTPReverseProxy) connectHandler(rw http.ResponseWriter, req *http.Request) {
@@ -288,11 +349,38 @@ func (rp *HTTPReverseProxy) injectRequestInfoToCtx(req *http.Request) *http.Requ
 func (rp *HTTPReverseProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	newreq := rp.injectRequestInfoToCtx(req)
 	rc := newreq.Context().Value(RouteConfigKey).(*RouteConfig)
+
+	// Check the client IP before auth so that rejected clients can't probe
+	// credentials or tell an existing route from a missing one.
+	if !checkRouteAllowIP(req, rc) {
+		log.Warnf("http request from [%s] for host [%s] path [%s] is not in allowIPs, rejected",
+			req.RemoteAddr, req.Host, req.URL.Path)
+		http.Error(rw, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+
+	// Serve the frps login page on the reserved paths.
+	if rc.authPageEnabled() && rc.isAuthPagePath(req.URL.Path) {
+		rp.serveAuthPage(rw, req, rc)
+		return
+	}
+
 	if !checkRouteAuthByRequest(req, rc) {
-		if req.URL.Host != "" {
+		switch {
+		case req.URL.Host != "":
 			rw.Header().Set("Proxy-Authenticate", `Basic realm="Restricted"`)
 			http.Error(rw, http.StatusText(http.StatusProxyAuthRequired), http.StatusProxyAuthRequired)
-		} else {
+		case rc.authPageEnabled() && wantsHTML(req) &&
+			(req.Method == http.MethodGet || req.Method == http.MethodHead):
+			// A browser can't send a custom header, so send it to the login form.
+			http.Redirect(rw, req, rc.authLoginPath()+"?redirect="+url.QueryEscape(req.URL.RequestURI()), http.StatusFound)
+		case rc.AuthHeader != "":
+			// API clients get a plain 401 without a challenge, so no browser
+			// dialog is triggered.
+			log.Debugf("http request for host [%s] path [%s] is missing credentials in header [%s]",
+				req.Host, req.URL.Path, rc.AuthHeader)
+			http.Error(rw, "401 Unauthorized: credentials are required in the "+rc.AuthHeader+" header", http.StatusUnauthorized)
+		default:
 			rw.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 			http.Error(rw, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		}

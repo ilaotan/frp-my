@@ -120,6 +120,17 @@ type RouteConfig struct {
 	Headers         map[string]string
 	ResponseHeaders map[string]string
 	RouteByHTTPUser string
+	// AuthHeader is the header used to carry HTTP Basic credentials.
+	// Empty means the default header: Authorization, or Proxy-Authorization for
+	// proxy-mode requests. Set it to a custom header (e.g. X-FRP-Auth) to leave
+	// Authorization free for the local service.
+	AuthHeader string
+	// AuthPagePath is the base path of the frps login page, e.g. "/.auth".
+	// Empty means defaultAuthPagePath.
+	AuthPagePath string
+	// AllowList restricts which client IPs may access this route.
+	// A nil list allows every client.
+	AllowList *IPAllowList
 
 	CreateConnFn           CreateConnFunc
 	ChooseEndpointFn       ChooseEndpointFunc
