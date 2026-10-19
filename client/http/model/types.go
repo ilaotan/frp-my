@@ -35,8 +35,3 @@ type ProxyStatusResp struct {
 type ProxyListResp struct {
 	Proxies []ProxyDefinition `json:"proxies"`
 }
-
-// VisitorListResp is the response for GET /api/store/visitors
-type VisitorListResp struct {
-	Visitors []VisitorDefinition `json:"visitors"`
-}

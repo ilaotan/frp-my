@@ -31,21 +31,7 @@ type AuthMethod string
 
 const (
 	AuthMethodToken AuthMethod = "token"
-	AuthMethodOIDC  AuthMethod = "oidc"
 )
-
-// QUIC protocol options
-type QUICOptions struct {
-	KeepalivePeriod    int `json:"keepalivePeriod,omitempty"`
-	MaxIdleTimeout     int `json:"maxIdleTimeout,omitempty"`
-	MaxIncomingStreams int `json:"maxIncomingStreams,omitempty"`
-}
-
-func (c *QUICOptions) Complete() {
-	c.KeepalivePeriod = util.EmptyOr(c.KeepalivePeriod, 10)
-	c.MaxIdleTimeout = util.EmptyOr(c.MaxIdleTimeout, 30)
-	c.MaxIncomingStreams = util.EmptyOr(c.MaxIncomingStreams, 100000)
-}
 
 type WebServerConfig struct {
 	// This is the network address to bind on for serving the web interface and API.
@@ -86,22 +72,6 @@ type TLSConfig struct {
 	// ServerName specifies the custom server name of tls certificate. By
 	// default, server name if same to ServerAddr.
 	ServerName string `json:"serverName,omitempty"`
-}
-
-// NatTraversalConfig defines configuration options for NAT traversal
-type NatTraversalConfig struct {
-	// DisableAssistedAddrs disables the use of local network interfaces
-	// for assisted connections during NAT traversal. When enabled,
-	// only STUN-discovered public addresses will be used.
-	DisableAssistedAddrs bool `json:"disableAssistedAddrs,omitempty"`
-}
-
-func (c *NatTraversalConfig) Clone() *NatTraversalConfig {
-	if c == nil {
-		return nil
-	}
-	out := *c
-	return &out
 }
 
 type LogConfig struct {

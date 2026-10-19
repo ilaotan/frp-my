@@ -25,7 +25,6 @@ import (
 	"time"
 
 	libcrypto "github.com/fatedier/golib/crypto"
-	quic "github.com/quic-go/quic-go"
 
 	"github.com/fatedier/frp/pkg/util/xlog"
 )
@@ -209,37 +208,6 @@ func (statsConn *StatsConn) Close() (err error) {
 		}
 	}
 	return
-}
-
-type wrapQuicStream struct {
-	*quic.Stream
-	c *quic.Conn
-}
-
-func QuicStreamToNetConn(s *quic.Stream, c *quic.Conn) net.Conn {
-	return &wrapQuicStream{
-		Stream: s,
-		c:      c,
-	}
-}
-
-func (conn *wrapQuicStream) LocalAddr() net.Addr {
-	if conn.c != nil {
-		return conn.c.LocalAddr()
-	}
-	return (*net.TCPAddr)(nil)
-}
-
-func (conn *wrapQuicStream) RemoteAddr() net.Addr {
-	if conn.c != nil {
-		return conn.c.RemoteAddr()
-	}
-	return (*net.TCPAddr)(nil)
-}
-
-func (conn *wrapQuicStream) Close() error {
-	conn.CancelRead(0)
-	return conn.Stream.Close()
 }
 
 func NewCryptoReadWriter(rw io.ReadWriter, key []byte) (io.ReadWriter, error) {

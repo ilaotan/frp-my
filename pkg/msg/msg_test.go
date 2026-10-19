@@ -30,20 +30,12 @@ func TestV1MessageTypeIDsAreStable(t *testing.T) {
 	require.Equal(t, byte('w'), TypeNewWorkConn)
 	require.Equal(t, byte('r'), TypeReqWorkConn)
 	require.Equal(t, byte('s'), TypeStartWorkConn)
-	require.Equal(t, byte('v'), TypeNewVisitorConn)
-	require.Equal(t, byte('3'), TypeNewVisitorConnResp)
 	require.Equal(t, byte('h'), TypePing)
 	require.Equal(t, byte('4'), TypePong)
-	require.Equal(t, byte('u'), TypeUDPPacket)
-	require.Equal(t, byte('i'), TypeNatHoleVisitor)
-	require.Equal(t, byte('n'), TypeNatHoleClient)
-	require.Equal(t, byte('m'), TypeNatHoleResp)
-	require.Equal(t, byte('5'), TypeNatHoleSid)
-	require.Equal(t, byte('6'), TypeNatHoleReport)
 }
 
 func TestMessageTypeMapIsCompleteAndUnique(t *testing.T) {
-	require.Len(t, msgTypeMap, 18)
+	require.Len(t, msgTypeMap, 10)
 
 	msgTypes := make(map[reflect.Type]struct{}, len(msgTypeMap))
 

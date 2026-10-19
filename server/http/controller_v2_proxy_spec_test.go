@@ -25,147 +25,53 @@ import (
 	"github.com/fatedier/frp/server/http/model"
 )
 
-func TestBuildV2ProxySpecAllTypesAndRedaction(t *testing.T) {
-	tests := []struct {
-		proxyType string
-		cfg       v1.ProxyConfigurer
-		blockKeys []string
-	}{
-		{
-			proxyType: "tcp",
-			cfg: &v1.TCPProxyConfig{
-				ProxyBaseConfig: newV2ProxyTestBaseConfig(t, "tcp"),
-				RemotePort:      6000,
-			},
-			blockKeys: []string{"annotations", "loadBalancer", "metadatas", "remotePort", "transport"},
-		},
-		{
-			proxyType: "udp",
-			cfg: &v1.UDPProxyConfig{
-				ProxyBaseConfig: newV2ProxyTestBaseConfig(t, "udp"),
-				RemotePort:      7000,
-			},
-			blockKeys: []string{"annotations", "loadBalancer", "metadatas", "remotePort", "transport"},
-		},
-		{
-			proxyType: "http",
-			cfg: &v1.HTTPProxyConfig{
-				ProxyBaseConfig:   newV2ProxyTestBaseConfig(t, "http"),
-				DomainConfig:      v1.DomainConfig{CustomDomains: []string{"app.example.com"}, SubDomain: "app"},
-				Locations:         []string{"/api"},
-				HTTPUser:          "secret-http-user",
-				HTTPPassword:      "secret-http-password",
-				HostHeaderRewrite: "backend.example.com",
-				RequestHeaders:    v1.HeaderOperations{Set: map[string]string{"X-Secret": "secret-request-header"}},
-				ResponseHeaders:   v1.HeaderOperations{Set: map[string]string{"X-Secret": "secret-response-header"}},
-				RouteByHTTPUser:   "secret-http-route-user",
-			},
-			blockKeys: []string{"annotations", "customDomains", "hostHeaderRewrite", "loadBalancer", "locations", "metadatas", "subdomain", "transport"},
-		},
-		{
-			proxyType: "https",
-			cfg: &v1.HTTPSProxyConfig{
-				ProxyBaseConfig: newV2ProxyTestBaseConfig(t, "https"),
-				DomainConfig:    v1.DomainConfig{CustomDomains: []string{"secure.example.com"}, SubDomain: "secure"},
-			},
-			blockKeys: []string{"annotations", "customDomains", "loadBalancer", "metadatas", "subdomain", "transport"},
-		},
-		{
-			proxyType: "tcpmux",
-			cfg: &v1.TCPMuxProxyConfig{
-				ProxyBaseConfig: newV2ProxyTestBaseConfig(t, "tcpmux"),
-				DomainConfig:    v1.DomainConfig{CustomDomains: []string{"mux.example.com"}, SubDomain: "mux"},
-				HTTPUser:        strings.Join([]string{"secret", "mux-http-user"}, "-"),
-				HTTPPassword:    strings.Join([]string{"secret", "mux-http-password"}, "-"),
-				RouteByHTTPUser: "displayed-mux-user",
-				Multiplexer:     "httpconnect",
-			},
-			blockKeys: []string{"annotations", "customDomains", "loadBalancer", "metadatas", "multiplexer", "routeByHTTPUser", "subdomain", "transport"},
-		},
-		{
-			proxyType: "stcp",
-			cfg: &v1.STCPProxyConfig{
-				ProxyBaseConfig: newV2ProxyTestBaseConfig(t, "stcp"),
-				Secretkey:       strings.Join([]string{"secret", "stcp-key"}, "-"),
-				AllowUsers:      []string{strings.Join([]string{"secret", "stcp-user"}, "-")},
-			},
-			blockKeys: []string{"annotations", "loadBalancer", "metadatas", "transport"},
-		},
-		{
-			proxyType: "sudp",
-			cfg: &v1.SUDPProxyConfig{
-				ProxyBaseConfig: newV2ProxyTestBaseConfig(t, "sudp"),
-				Secretkey:       strings.Join([]string{"secret", "sudp-key"}, "-"),
-				AllowUsers:      []string{strings.Join([]string{"secret", "sudp-user"}, "-")},
-			},
-			blockKeys: []string{"annotations", "loadBalancer", "metadatas", "transport"},
-		},
-		{
-			proxyType: "xtcp",
-			cfg: &v1.XTCPProxyConfig{
-				ProxyBaseConfig: newV2ProxyTestBaseConfig(t, "xtcp"),
-				Secretkey:       strings.Join([]string{"secret", "xtcp-key"}, "-"),
-				AllowUsers:      []string{strings.Join([]string{"secret", "xtcp-user"}, "-")},
-			},
-			blockKeys: []string{"annotations", "loadBalancer", "metadatas", "transport"},
-		},
+func TestBuildV2ProxySpecTCPAndRedaction(t *testing.T) {
+	cfg := &v1.TCPProxyConfig{
+		ProxyBaseConfig: newV2ProxyTestBaseConfig(t, "tcp"),
+		RemotePort:      6000,
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.proxyType, func(t *testing.T) {
-			spec := buildV2ProxySpec(tt.proxyType, tt.cfg)
-			raw := mustMarshalJSON(t, spec)
+	raw := mustMarshalJSON(t, buildV2ProxySpec("tcp", cfg))
 
-			var specObject map[string]json.RawMessage
-			if err := json.Unmarshal(raw, &specObject); err != nil {
-				t.Fatalf("unmarshal spec failed: %v", err)
-			}
-			assertRawJSONKeys(t, specObject, tt.proxyType, "type")
+	var specObject map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &specObject); err != nil {
+		t.Fatalf("unmarshal spec failed: %v", err)
+	}
+	assertRawJSONKeys(t, specObject, "tcp", "type")
 
-			var gotType string
-			if err := json.Unmarshal(specObject["type"], &gotType); err != nil {
-				t.Fatalf("unmarshal spec type failed: %v", err)
-			}
-			if gotType != tt.proxyType {
-				t.Fatalf("spec type mismatch, want %q got %q", tt.proxyType, gotType)
-			}
+	var gotType string
+	if err := json.Unmarshal(specObject["type"], &gotType); err != nil {
+		t.Fatalf("unmarshal spec type failed: %v", err)
+	}
+	if gotType != "tcp" {
+		t.Fatalf("spec type mismatch, want tcp got %q", gotType)
+	}
 
-			var block map[string]json.RawMessage
-			if err := json.Unmarshal(specObject[tt.proxyType], &block); err != nil {
-				t.Fatalf("unmarshal active block failed: %v", err)
-			}
-			assertRawJSONKeys(t, block, tt.blockKeys...)
-			assertV2ProxyCommonSpec(t, block)
-			assertV2ProxyTypeFields(t, tt.proxyType, specObject[tt.proxyType])
-			assertNoV2ProxySensitiveFields(t, block)
+	var block map[string]json.RawMessage
+	if err := json.Unmarshal(specObject["tcp"], &block); err != nil {
+		t.Fatalf("unmarshal active block failed: %v", err)
+	}
+	assertRawJSONKeys(t, block, "annotations", "loadBalancer", "metadatas", "remotePort", "transport")
+	assertV2ProxyCommonSpec(t, block)
+	assertV2ProxyTypeFields(t, "tcp", specObject["tcp"])
+	assertNoV2ProxySensitiveFields(t, block)
 
-			content := string(raw)
-			for _, secret := range []string{
-				"secret-proxy-name",
-				"secret-group-key",
-				"secret-local-host",
-				"secret-plugin-user",
-				"secret-plugin-password",
-				"secret-health-path",
-				"secret-http-user",
-				"secret-http-password",
-				"secret-request-header",
-				"secret-response-header",
-				"secret-http-route-user",
-				"secret-mux-http-user",
-				"secret-mux-http-password",
-				"secret-stcp-key",
-				"secret-stcp-user",
-				"secret-sudp-key",
-				"secret-sudp-user",
-				"secret-xtcp-key",
-				"secret-xtcp-user",
-			} {
-				if strings.Contains(content, secret) {
-					t.Fatalf("sensitive value %q leaked in spec: %s", secret, content)
-				}
-			}
-		})
+	content := string(raw)
+	for _, secret := range []string{
+		"secret-proxy-name",
+		"secret-group-key",
+		"secret-local-host",
+		"secret-plugin-user",
+		"secret-plugin-password",
+		"secret-health-path",
+		"secret-http-user",
+		"secret-http-password",
+		"secret-request-header",
+		"secret-response-header",
+	} {
+		if strings.Contains(content, secret) {
+			t.Fatalf("sensitive value %q leaked in spec: %s", secret, content)
+		}
 	}
 }
 
@@ -180,41 +86,6 @@ func assertV2ProxyTypeFields(t *testing.T, proxyType string, raw json.RawMessage
 		}
 		if block.RemotePort == nil || *block.RemotePort != 6000 {
 			t.Fatalf("tcp remote port mismatch: %#v", block.RemotePort)
-		}
-	case "udp":
-		var block model.V2UDPProxySpec
-		if err := json.Unmarshal(raw, &block); err != nil {
-			t.Fatalf("unmarshal udp block failed: %v", err)
-		}
-		if block.RemotePort == nil || *block.RemotePort != 7000 {
-			t.Fatalf("udp remote port mismatch: %#v", block.RemotePort)
-		}
-	case "http":
-		var block model.V2HTTPProxySpec
-		if err := json.Unmarshal(raw, &block); err != nil {
-			t.Fatalf("unmarshal http block failed: %v", err)
-		}
-		if len(block.CustomDomains) != 1 || block.CustomDomains[0] != "app.example.com" ||
-			block.Subdomain != "app" || len(block.Locations) != 1 || block.Locations[0] != "/api" ||
-			block.HostHeaderRewrite != "backend.example.com" {
-			t.Fatalf("http fields mismatch: %#v", block)
-		}
-	case "https":
-		var block model.V2HTTPSProxySpec
-		if err := json.Unmarshal(raw, &block); err != nil {
-			t.Fatalf("unmarshal https block failed: %v", err)
-		}
-		if len(block.CustomDomains) != 1 || block.CustomDomains[0] != "secure.example.com" || block.Subdomain != "secure" {
-			t.Fatalf("https fields mismatch: %#v", block)
-		}
-	case "tcpmux":
-		var block model.V2TCPMuxProxySpec
-		if err := json.Unmarshal(raw, &block); err != nil {
-			t.Fatalf("unmarshal tcpmux block failed: %v", err)
-		}
-		if len(block.CustomDomains) != 1 || block.CustomDomains[0] != "mux.example.com" ||
-			block.Subdomain != "mux" || block.Multiplexer != "httpconnect" || block.RouteByHTTPUser != "displayed-mux-user" {
-			t.Fatalf("tcpmux fields mismatch: %#v", block)
 		}
 	}
 }
@@ -241,10 +112,7 @@ func TestBuildV2ProxyRespOfflineTypedShells(t *testing.T) {
 }
 
 func TestBuildV2ProxySpecDoesNotPopulateMismatchedBlock(t *testing.T) {
-	spec := buildV2ProxySpec("tcp", &v1.UDPProxyConfig{
-		ProxyBaseConfig: newV2ProxyTestBaseConfig(t, "udp"),
-		RemotePort:      7000,
-	})
+	spec := buildV2ProxySpec("tcp", nil)
 
 	var specObject map[string]json.RawMessage
 	if err := json.Unmarshal(mustMarshalJSON(t, spec), &specObject); err != nil {

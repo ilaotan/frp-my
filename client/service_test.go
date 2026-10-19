@@ -80,39 +80,6 @@ func TestRunStopsStartedComponentsOnInitialLoginFailure(t *testing.T) {
 	_ = ln.Close()
 }
 
-func TestNewServiceDoesNotLeakAdminListenerOnAuthBuildFailure(t *testing.T) {
-	port := getFreeTCPPort(t)
-	agg := source.NewAggregator(source.NewConfigSource())
-
-	_, err := NewService(ServiceOptions{
-		Common: &v1.ClientCommonConfig{
-			Auth: v1.AuthClientConfig{
-				Method: v1.AuthMethodOIDC,
-				OIDC: v1.AuthOIDCClientConfig{
-					TokenEndpointURL: "://bad",
-				},
-			},
-			WebServer: v1.WebServerConfig{
-				Addr: "127.0.0.1",
-				Port: port,
-			},
-		},
-		ConfigSourceAggregator: agg,
-	})
-	if err == nil {
-		t.Fatal("expected new service error, got nil")
-	}
-	if !strings.Contains(err.Error(), "auth.oidc.tokenEndpointURL") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
-	if err != nil {
-		t.Fatalf("expected admin port to remain free: %v", err)
-	}
-	_ = ln.Close()
-}
-
 func TestUpdateConfigSourceRollsBackReloadCommonOnReplaceAllFailure(t *testing.T) {
 	prevCommon := &v1.ClientCommonConfig{User: "old-user"}
 	newCommon := &v1.ClientCommonConfig{User: "new-user"}
@@ -123,7 +90,7 @@ func TestUpdateConfigSourceRollsBackReloadCommonOnReplaceAllFailure(t *testing.T
 	}
 
 	invalidProxy := &v1.TCPProxyConfig{}
-	err := svr.UpdateConfigSource(newCommon, []v1.ProxyConfigurer{invalidProxy}, nil)
+	err := svr.UpdateConfigSource(newCommon, []v1.ProxyConfigurer{invalidProxy})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -155,7 +122,7 @@ func TestUpdateConfigSourceKeepsReloadCommonOnReloadFailure(t *testing.T) {
 			Type: "tcp",
 		},
 	}
-	err := svr.UpdateConfigSource(newCommon, []v1.ProxyConfigurer{validProxy}, nil)
+	err := svr.UpdateConfigSource(newCommon, []v1.ProxyConfigurer{validProxy})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -183,17 +150,8 @@ func TestReloadConfigFromSourcesDoesNotMutateStoreConfigs(t *testing.T) {
 			Type: "tcp",
 		},
 	}
-	visitorCfg := &v1.STCPVisitorConfig{
-		VisitorBaseConfig: v1.VisitorBaseConfig{
-			Name: "store-visitor",
-			Type: "stcp",
-		},
-	}
 	if err := storeSource.AddProxy(proxyCfg); err != nil {
 		t.Fatalf("add proxy to store: %v", err)
-	}
-	if err := storeSource.AddVisitor(visitorCfg); err != nil {
-		t.Fatalf("add visitor to store: %v", err)
 	}
 
 	agg := source.NewAggregator(source.NewConfigSource())
@@ -217,14 +175,6 @@ func TestReloadConfigFromSourcesDoesNotMutateStoreConfigs(t *testing.T) {
 		t.Fatalf("store proxy localIP should stay empty, got %q", gotProxy.GetBaseConfig().LocalIP)
 	}
 
-	gotVisitor := storeSource.GetVisitor("store-visitor")
-	if gotVisitor == nil {
-		t.Fatalf("visitor not found in store")
-	}
-	if gotVisitor.GetBaseConfig().BindAddr != "" {
-		t.Fatalf("store visitor bindAddr should stay empty, got %q", gotVisitor.GetBaseConfig().BindAddr)
-	}
-
 	svr.cfgMu.RLock()
 	defer svr.cfgMu.RUnlock()
 
@@ -233,12 +183,5 @@ func TestReloadConfigFromSourcesDoesNotMutateStoreConfigs(t *testing.T) {
 	}
 	if svr.proxyCfgs[0].GetBaseConfig().LocalIP != "127.0.0.1" {
 		t.Fatalf("runtime proxy localIP should be defaulted, got %q", svr.proxyCfgs[0].GetBaseConfig().LocalIP)
-	}
-
-	if len(svr.visitorCfgs) != 1 {
-		t.Fatalf("expected 1 runtime visitor, got %d", len(svr.visitorCfgs))
-	}
-	if svr.visitorCfgs[0].GetBaseConfig().BindAddr != "127.0.0.1" {
-		t.Fatalf("runtime visitor bindAddr should be defaulted, got %q", svr.visitorCfgs[0].GetBaseConfig().BindAddr)
 	}
 }

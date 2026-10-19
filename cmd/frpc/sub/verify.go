@@ -34,11 +34,11 @@ func verifyClientConfig(
 	strict bool,
 	unsafeFeatures *security.UnsafeFeatures,
 ) (validation.Warning, error) {
-	cliCfg, proxyCfgs, visitorCfgs, _, err := config.LoadClientConfig(configFile, strict)
+	cliCfg, proxyCfgs, _, err := config.LoadClientConfig(configFile, strict)
 	if err != nil {
 		return nil, err
 	}
-	return validation.ValidateAllClientConfig(cliCfg, proxyCfgs, visitorCfgs, unsafeFeatures)
+	return validation.ValidateAllClientConfig(cliCfg, proxyCfgs, unsafeFeatures)
 }
 
 var verifyCmd = &cobra.Command{

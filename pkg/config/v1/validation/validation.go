@@ -24,8 +24,6 @@ import (
 var (
 	SupportedTransportProtocols = []string{
 		"tcp",
-		"kcp",
-		"quic",
 		"websocket",
 		"wss",
 	}
@@ -36,7 +34,6 @@ var (
 
 	SupportedAuthMethods = []v1.AuthMethod{
 		"token",
-		"oidc",
 	}
 
 	SupportedAuthAdditionalScopes = []v1.AuthScope{

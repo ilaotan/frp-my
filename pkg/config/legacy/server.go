@@ -42,39 +42,9 @@ type ServerCommonConf struct {
 	// BindPort specifies the port that the server listens on. By default, this
 	// value is 7000.
 	BindPort int `ini:"bind_port" json:"bind_port"`
-	// KCPBindPort specifies the KCP port that the server listens on. If this
-	// value is 0, the server will not listen for KCP connections. By default,
-	// this value is 0.
-	KCPBindPort int `ini:"kcp_bind_port" json:"kcp_bind_port"`
-	// QUICBindPort specifies the QUIC port that the server listens on.
-	// Set this value to 0 will disable this feature.
-	// By default, the value is 0.
-	QUICBindPort int `ini:"quic_bind_port" json:"quic_bind_port"`
-	// QUIC protocol options
-	QUICKeepalivePeriod    int `ini:"quic_keepalive_period" json:"quic_keepalive_period"`
-	QUICMaxIdleTimeout     int `ini:"quic_max_idle_timeout" json:"quic_max_idle_timeout"`
-	QUICMaxIncomingStreams int `ini:"quic_max_incoming_streams" json:"quic_max_incoming_streams"`
 	// ProxyBindAddr specifies the address that the proxy binds to. This value
 	// may be the same as BindAddr.
 	ProxyBindAddr string `ini:"proxy_bind_addr" json:"proxy_bind_addr"`
-	// VhostHTTPPort specifies the port that the server listens for HTTP Vhost
-	// requests. If this value is 0, the server will not listen for HTTP
-	// requests. By default, this value is 0.
-	VhostHTTPPort int `ini:"vhost_http_port" json:"vhost_http_port"`
-	// VhostHTTPSPort specifies the port that the server listens for HTTPS
-	// Vhost requests. If this value is 0, the server will not listen for HTTPS
-	// requests. By default, this value is 0.
-	VhostHTTPSPort int `ini:"vhost_https_port" json:"vhost_https_port"`
-	// TCPMuxHTTPConnectPort specifies the port that the server listens for TCP
-	// HTTP CONNECT requests. If the value is 0, the server will not multiplex TCP
-	// requests on one single port. If it's not - it will listen on this value for
-	// HTTP CONNECT requests. By default, this value is 0.
-	TCPMuxHTTPConnectPort int `ini:"tcpmux_httpconnect_port" json:"tcpmux_httpconnect_port"`
-	// If TCPMuxPassthrough is true, frps won't do any update on traffic.
-	TCPMuxPassthrough bool `ini:"tcpmux_passthrough" json:"tcpmux_passthrough"`
-	// VhostHTTPTimeout specifies the response header timeout for the Vhost
-	// HTTP server, in seconds. By default, this value is 60.
-	VhostHTTPTimeout int64 `ini:"vhost_http_timeout" json:"vhost_http_timeout"`
 	// DashboardAddr specifies the address that the dashboard binds to. By
 	// default, this value is "0.0.0.0".
 	DashboardAddr string `ini:"dashboard_addr" json:"dashboard_addr"`
@@ -99,9 +69,6 @@ type ServerCommonConf struct {
 	// DashboardPwd specifies the password that the dashboard will use for
 	// login.
 	DashboardPwd string `ini:"dashboard_pwd" json:"dashboard_pwd"`
-	// EnablePrometheus will export prometheus metrics on {dashboard_addr}:{dashboard_port}
-	// in /metrics api.
-	EnablePrometheus bool `ini:"enable_prometheus" json:"enable_prometheus"`
 	// AssetsDir specifies the local directory that the dashboard will load
 	// resources from. If this value is "", assets will be loaded from the
 	// bundled executable using statik. By default, this value is "".
@@ -129,12 +96,6 @@ type ServerCommonConf struct {
 	// debug info) to frpc. By default, this value is true.
 	DetailedErrorsToClient bool `ini:"detailed_errors_to_client" json:"detailed_errors_to_client"`
 
-	// SubDomainHost specifies the domain that will be attached to sub-domains
-	// requested by the client when using Vhost proxying. For example, if this
-	// value is set to "frps.com" and the client requested the subdomain
-	// "test", the resulting URL would be "test.frps.com". By default, this
-	// value is "".
-	SubDomainHost string `ini:"subdomain_host" json:"subdomain_host"`
 	// TCPMux toggles TCP stream multiplexing. This allows multiple requests
 	// from a client to share a single TCP connection. By default, this value
 	// is true.
@@ -145,10 +106,6 @@ type ServerCommonConf struct {
 	// TCPKeepAlive specifies the interval between keep-alive probes for an active network connection between frpc and frps.
 	// If negative, keep-alive probes are disabled.
 	TCPKeepAlive int64 `ini:"tcp_keepalive" json:"tcp_keepalive"`
-	// Custom404Page specifies a path to a custom 404 page to display. If this
-	// value is "", a default page will be displayed. By default, this value is
-	// "".
-	Custom404Page string `ini:"custom_404_page" json:"custom_404_page"`
 
 	// AllowPorts specifies a set of ports that clients are able to proxy to.
 	// If the length of this value is 0, all ports are allowed. By default,
@@ -190,14 +147,9 @@ type ServerCommonConf struct {
 	UserConnTimeout int64 `ini:"user_conn_timeout" json:"user_conn_timeout"`
 	// HTTPPlugins specify the server plugins support HTTP protocol.
 	HTTPPlugins map[string]HTTPPluginOptions `ini:"-" json:"http_plugins"`
-	// UDPPacketSize specifies the UDP packet size
-	// By default, this value is 1500
-	UDPPacketSize int64 `ini:"udp_packet_size" json:"udp_packet_size"`
 	// Enable golang pprof handlers in dashboard listener.
 	// Dashboard port must be set first.
 	PprofEnable bool `ini:"pprof_enable" json:"pprof_enable"`
-	// NatHoleAnalysisDataReserveHours specifies the hours to reserve nat hole analysis data.
-	NatHoleAnalysisDataReserveHours int64 `ini:"nat_hole_analysis_data_reserve_hours" json:"nat_hole_analysis_data_reserve_hours"`
 }
 
 // GetDefaultServerConf returns a server configuration with reasonable defaults.

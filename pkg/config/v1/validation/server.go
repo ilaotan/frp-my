@@ -49,11 +49,6 @@ func (v *ConfigValidator) ValidateServerConfig(c *v1.ServerConfig) (Warning, err
 	}
 
 	errs = AppendError(errs, ValidatePort(c.BindPort, "bindPort"))
-	errs = AppendError(errs, ValidatePort(c.KCPBindPort, "kcpBindPort"))
-	errs = AppendError(errs, ValidatePort(c.QUICBindPort, "quicBindPort"))
-	errs = AppendError(errs, ValidatePort(c.VhostHTTPPort, "vhostHTTPPort"))
-	errs = AppendError(errs, ValidatePort(c.VhostHTTPSPort, "vhostHTTPSPort"))
-	errs = AppendError(errs, ValidatePort(c.TCPMuxHTTPConnectPort, "tcpMuxHTTPConnectPort"))
 	if c.Transport.MaxPoolCount < 0 {
 		errs = AppendError(errs, fmt.Errorf("invalid transport.maxPoolCount, must be non-negative"))
 	}

@@ -19,6 +19,5 @@ import (
 )
 
 var (
-	EnableMem        = aggregate.EnableMem
-	EnablePrometheus = aggregate.EnablePrometheus
+	EnableMem = aggregate.EnableMem
 )

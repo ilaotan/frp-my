@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/fatedier/frp/client/proxy"
-	"github.com/fatedier/frp/client/visitor"
 	v1 "github.com/fatedier/frp/pkg/config/v1"
 	"github.com/fatedier/frp/pkg/msg"
 )
@@ -34,8 +33,7 @@ func newGracefulCloseTestService() *Service {
 		},
 		doneCh: make(chan struct{}),
 	}
-	ctl.pm = proxy.NewManager(ctx, common, nil, nil, nil, "")
-	ctl.vm = visitor.NewManager(ctx, "graceful-close-race", common, nil, nil, nil, "")
+	ctl.pm = proxy.NewManager(ctx, common, nil, nil)
 	return &Service{ctl: ctl, cancel: context.CancelCauseFunc(func(error) {})}
 }
 

@@ -1,13 +1,11 @@
 package streamserver
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"net"
 	"strconv"
 
-	libnet "github.com/fatedier/frp/pkg/util/net"
 	"github.com/fatedier/frp/test/e2e/pkg/rpc"
 )
 
@@ -15,7 +13,6 @@ type Type string
 
 const (
 	TCP  Type = "tcp"
-	UDP  Type = "udp"
 	Unix Type = "unix"
 )
 
@@ -101,8 +98,6 @@ func (s *Server) initListener() (err error) {
 	switch s.netType {
 	case TCP:
 		s.l, err = net.Listen("tcp", net.JoinHostPort(s.bindAddr, strconv.Itoa(s.bindPort)))
-	case UDP:
-		s.l, err = libnet.ListenUDP(s.bindAddr, s.bindPort)
 	case Unix:
 		s.l, err = net.Listen("unix", s.bindAddr)
 	default:
@@ -115,9 +110,6 @@ func (s *Server) handle(c net.Conn) {
 	defer c.Close()
 
 	var reader io.Reader = c
-	if s.netType == UDP {
-		reader = bufio.NewReader(c)
-	}
 	for {
 		buf, err := rpc.ReadBytes(reader)
 		if err != nil {

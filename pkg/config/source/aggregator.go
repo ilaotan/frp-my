@@ -67,43 +67,33 @@ func (a *Aggregator) getSourcesLocked() []Source {
 	return sources
 }
 
-func (a *Aggregator) Load() ([]v1.ProxyConfigurer, []v1.VisitorConfigurer, error) {
+func (a *Aggregator) Load() ([]v1.ProxyConfigurer, error) {
 	a.mu.RLock()
 	entries := a.getSourcesLocked()
 	a.mu.RUnlock()
 
 	if len(entries) == 0 {
-		return nil, nil, errors.New("no sources configured")
+		return nil, errors.New("no sources configured")
 	}
 
 	proxyMap := make(map[string]v1.ProxyConfigurer)
-	visitorMap := make(map[string]v1.VisitorConfigurer)
 
 	for _, src := range entries {
-		proxies, visitors, err := src.Load()
+		proxies, err := src.Load()
 		if err != nil {
-			return nil, nil, fmt.Errorf("load source: %w", err)
+			return nil, fmt.Errorf("load source: %w", err)
 		}
 		for _, p := range proxies {
 			proxyMap[p.GetBaseConfig().Name] = p
 		}
-		for _, v := range visitors {
-			visitorMap[v.GetBaseConfig().Name] = v
-		}
 	}
-	proxies, visitors := a.mapsToSortedSlices(proxyMap, visitorMap)
-	return proxies, visitors, nil
+	return a.mapsToSortedSlices(proxyMap), nil
 }
 
 func (a *Aggregator) mapsToSortedSlices(
 	proxyMap map[string]v1.ProxyConfigurer,
-	visitorMap map[string]v1.VisitorConfigurer,
-) ([]v1.ProxyConfigurer, []v1.VisitorConfigurer) {
-	proxies := slices.SortedFunc(maps.Values(proxyMap), func(x, y v1.ProxyConfigurer) int {
+) []v1.ProxyConfigurer {
+	return slices.SortedFunc(maps.Values(proxyMap), func(x, y v1.ProxyConfigurer) int {
 		return cmp.Compare(x.GetBaseConfig().Name, y.GetBaseConfig().Name)
 	})
-	visitors := slices.SortedFunc(maps.Values(visitorMap), func(x, y v1.VisitorConfigurer) int {
-		return cmp.Compare(x.GetBaseConfig().Name, y.GetBaseConfig().Name)
-	})
-	return proxies, visitors
 }

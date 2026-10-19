@@ -69,34 +69,6 @@ func DecodeProxyConfigurerJSON(b []byte, options DecodeOptions) (ProxyConfigurer
 	return configurer, nil
 }
 
-func DecodeVisitorConfigurerJSON(b []byte, options DecodeOptions) (VisitorConfigurer, error) {
-	if isJSONNull(b) {
-		return nil, errors.New("type is required")
-	}
-
-	var env typedEnvelope
-	if err := jsonx.Unmarshal(b, &env); err != nil {
-		return nil, err
-	}
-
-	configurer := NewVisitorConfigurerByType(VisitorType(env.Type))
-	if configurer == nil {
-		return nil, fmt.Errorf("unknown visitor type: %s", env.Type)
-	}
-	if err := decodeJSONWithOptions(b, configurer, options); err != nil {
-		return nil, fmt.Errorf("unmarshal VisitorConfig error: %v", err)
-	}
-
-	if len(env.Plugin) > 0 && !isJSONNull(env.Plugin) {
-		plugin, err := DecodeVisitorPluginOptionsJSON(env.Plugin, options)
-		if err != nil {
-			return nil, fmt.Errorf("unmarshal visitor plugin error: %v", err)
-		}
-		configurer.GetBaseConfig().Plugin = plugin
-	}
-	return configurer, nil
-}
-
 func DecodeClientPluginOptionsJSON(b []byte, options DecodeOptions) (TypedClientPluginOptions, error) {
 	if isJSONNull(b) {
 		return TypedClientPluginOptions{}, nil
@@ -124,38 +96,10 @@ func DecodeClientPluginOptionsJSON(b []byte, options DecodeOptions) (TypedClient
 	}, nil
 }
 
-func DecodeVisitorPluginOptionsJSON(b []byte, options DecodeOptions) (TypedVisitorPluginOptions, error) {
-	if isJSONNull(b) {
-		return TypedVisitorPluginOptions{}, nil
-	}
-
-	var env typedEnvelope
-	if err := jsonx.Unmarshal(b, &env); err != nil {
-		return TypedVisitorPluginOptions{}, err
-	}
-	if env.Type == "" {
-		return TypedVisitorPluginOptions{}, errors.New("visitor plugin type is empty")
-	}
-
-	v, ok := visitorPluginOptionsTypeMap[env.Type]
-	if !ok {
-		return TypedVisitorPluginOptions{}, fmt.Errorf("unknown visitor plugin type: %s", env.Type)
-	}
-	optionsStruct := reflect.New(v).Interface().(VisitorPluginOptions)
-	if err := decodeJSONWithOptions(b, optionsStruct, options); err != nil {
-		return TypedVisitorPluginOptions{}, fmt.Errorf("unmarshal VisitorPluginOptions error: %v", err)
-	}
-	return TypedVisitorPluginOptions{
-		Type:                 env.Type,
-		VisitorPluginOptions: optionsStruct,
-	}, nil
-}
-
 func DecodeClientConfigJSON(b []byte, options DecodeOptions) (ClientConfig, error) {
 	type rawClientConfig struct {
 		ClientCommonConfig
-		Proxies  []jsonx.RawMessage `json:"proxies,omitempty"`
-		Visitors []jsonx.RawMessage `json:"visitors,omitempty"`
+		Proxies []jsonx.RawMessage `json:"proxies,omitempty"`
 	}
 
 	raw := rawClientConfig{}
@@ -166,7 +110,6 @@ func DecodeClientConfigJSON(b []byte, options DecodeOptions) (ClientConfig, erro
 	cfg := ClientConfig{
 		ClientCommonConfig: raw.ClientCommonConfig,
 		Proxies:            make([]TypedProxyConfig, 0, len(raw.Proxies)),
-		Visitors:           make([]TypedVisitorConfig, 0, len(raw.Visitors)),
 	}
 
 	for i, proxyData := range raw.Proxies {
@@ -177,17 +120,6 @@ func DecodeClientConfigJSON(b []byte, options DecodeOptions) (ClientConfig, erro
 		cfg.Proxies = append(cfg.Proxies, TypedProxyConfig{
 			Type:            proxyCfg.GetBaseConfig().Type,
 			ProxyConfigurer: proxyCfg,
-		})
-	}
-
-	for i, visitorData := range raw.Visitors {
-		visitorCfg, err := DecodeVisitorConfigurerJSON(visitorData, options)
-		if err != nil {
-			return ClientConfig{}, fmt.Errorf("decode visitor at index %d: %w", i, err)
-		}
-		cfg.Visitors = append(cfg.Visitors, TypedVisitorConfig{
-			Type:              visitorCfg.GetBaseConfig().Type,
-			VisitorConfigurer: visitorCfg,
 		})
 	}
 

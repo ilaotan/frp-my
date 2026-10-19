@@ -33,15 +33,6 @@ func mockProxy(name string) v1.ProxyConfigurer {
 	return cfg
 }
 
-// mockVisitor creates a STCP visitor config for testing
-func mockVisitor(name string) v1.VisitorConfigurer {
-	cfg := &v1.STCPVisitorConfig{}
-	cfg.Name = name
-	cfg.Type = "stcp"
-	cfg.ServerName = "test-server"
-	return cfg
-}
-
 func newTestStoreSource(t *testing.T) *StoreSource {
 	t.Helper()
 
@@ -123,7 +114,7 @@ func TestAggregator_MergeBySourceOrder(t *testing.T) {
 	configOnly := mockProxy("only-in-config").(*v1.TCPProxyConfig)
 	configOnly.LocalPort = 1112
 
-	err := configSource.ReplaceAll([]v1.ProxyConfigurer{configShared, configOnly}, nil)
+	err := configSource.ReplaceAll([]v1.ProxyConfigurer{configShared, configOnly})
 	require.NoError(err)
 
 	storeShared := mockProxy("shared").(*v1.TCPProxyConfig)
@@ -135,9 +126,8 @@ func TestAggregator_MergeBySourceOrder(t *testing.T) {
 	err = storeSource.AddProxy(storeOnly)
 	require.NoError(err)
 
-	proxies, visitors, err := agg.Load()
+	proxies, err := agg.Load()
 	require.NoError(err)
-	require.Len(visitors, 0)
 	require.Len(proxies, 3)
 
 	var sharedProxy *v1.TCPProxyConfig
@@ -160,7 +150,7 @@ func TestAggregator_DisabledEntryIsSourceLocalFilter(t *testing.T) {
 
 	lowProxy := mockProxy("shared-proxy").(*v1.TCPProxyConfig)
 	lowProxy.LocalPort = 1111
-	err := configSource.ReplaceAll([]v1.ProxyConfigurer{lowProxy}, nil)
+	err := configSource.ReplaceAll([]v1.ProxyConfigurer{lowProxy})
 	require.NoError(err)
 
 	disabled := false
@@ -170,30 +160,13 @@ func TestAggregator_DisabledEntryIsSourceLocalFilter(t *testing.T) {
 	err = storeSource.AddProxy(highProxy)
 	require.NoError(err)
 
-	proxies, visitors, err := agg.Load()
+	proxies, err := agg.Load()
 	require.NoError(err)
 	require.Len(proxies, 1)
-	require.Len(visitors, 0)
 
 	proxy := proxies[0].(*v1.TCPProxyConfig)
 	require.Equal("shared-proxy", proxy.Name)
 	require.Equal(1111, proxy.LocalPort)
-}
-
-func TestAggregator_VisitorMerge(t *testing.T) {
-	require := require.New(t)
-
-	storeSource := newTestStoreSource(t)
-	agg := newTestAggregator(t, storeSource)
-
-	err := agg.ConfigSource().ReplaceAll(nil, []v1.VisitorConfigurer{mockVisitor("visitor1")})
-	require.NoError(err)
-	err = storeSource.AddVisitor(mockVisitor("visitor2"))
-	require.NoError(err)
-
-	_, visitors, err := agg.Load()
-	require.NoError(err)
-	require.Len(visitors, 2)
 }
 
 func TestAggregator_Load_ReturnsSortedByName(t *testing.T) {
@@ -202,36 +175,32 @@ func TestAggregator_Load_ReturnsSortedByName(t *testing.T) {
 	agg := newTestAggregator(t, nil)
 	err := agg.ConfigSource().ReplaceAll(
 		[]v1.ProxyConfigurer{mockProxy("charlie"), mockProxy("alice"), mockProxy("bob")},
-		[]v1.VisitorConfigurer{mockVisitor("zulu"), mockVisitor("alpha")},
 	)
 	require.NoError(err)
 
-	proxies, visitors, err := agg.Load()
+	proxies, err := agg.Load()
 	require.NoError(err)
 	require.Len(proxies, 3)
 	require.Equal("alice", proxies[0].GetBaseConfig().Name)
 	require.Equal("bob", proxies[1].GetBaseConfig().Name)
 	require.Equal("charlie", proxies[2].GetBaseConfig().Name)
-	require.Len(visitors, 2)
-	require.Equal("alpha", visitors[0].GetBaseConfig().Name)
-	require.Equal("zulu", visitors[1].GetBaseConfig().Name)
 }
 
 func TestAggregator_Load_ReturnsDefensiveCopies(t *testing.T) {
 	require := require.New(t)
 
 	agg := newTestAggregator(t, nil)
-	err := agg.ConfigSource().ReplaceAll([]v1.ProxyConfigurer{mockProxy("ssh")}, nil)
+	err := agg.ConfigSource().ReplaceAll([]v1.ProxyConfigurer{mockProxy("ssh")})
 	require.NoError(err)
 
-	proxies, _, err := agg.Load()
+	proxies, err := agg.Load()
 	require.NoError(err)
 	require.Len(proxies, 1)
 	require.Equal("ssh", proxies[0].GetBaseConfig().Name)
 
 	proxies[0].GetBaseConfig().Name = "alice.ssh"
 
-	proxies2, _, err := agg.Load()
+	proxies2, err := agg.Load()
 	require.NoError(err)
 	require.Len(proxies2, 1)
 	require.Equal("ssh", proxies2[0].GetBaseConfig().Name)

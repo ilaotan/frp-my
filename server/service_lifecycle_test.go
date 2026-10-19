@@ -57,7 +57,6 @@ func newLifecycleTestService(t *testing.T, web bool) (*Service, *lifecycleListen
 	}
 	if web {
 		cfg.WebServer = v1.WebServerConfig{Addr: "127.0.0.1", Port: freeLifecycleTCPPort(t)}
-		cfg.VhostHTTPPort = freeLifecycleTCPPort(t)
 	}
 	require.NoError(t, cfg.Complete())
 	cfg.BindPort = 0
@@ -70,7 +69,6 @@ func newLifecycleTestService(t *testing.T, web bool) (*Service, *lifecycleListen
 	addresses := []string{l.Addr().String()}
 	if web {
 		addresses = append(addresses, svr.webServer.Address())
-		addresses = append(addresses, net.JoinHostPort(cfg.ProxyBindAddr, fmt.Sprint(cfg.VhostHTTPPort)))
 	}
 	assertLifecyclePorts(t, addresses, false)
 	return svr, l, addresses
@@ -183,12 +181,10 @@ func TestNewServiceReleasesListenersOnWebServerFailure(t *testing.T) {
 			}
 			require.NoError(t, cfg.Complete())
 			dir := t.TempDir()
-			cfg.SSHTunnelGateway.AutoGenPrivateKeyPath = filepath.Join(dir, "ssh_key")
 
 			// Hold reservations together so each listener gets a distinct port.
 			tcpPorts := []*int{
-				&cfg.BindPort, &cfg.TCPMuxHTTPConnectPort, &cfg.SSHTunnelGateway.BindPort,
-				&cfg.VhostHTTPPort, &cfg.VhostHTTPSPort, &cfg.WebServer.Port,
+				&cfg.BindPort, &cfg.WebServer.Port,
 			}
 			tcpReservations := make([]net.Listener, 0, len(tcpPorts))
 			tcpAddresses := make([]string, 0, len(tcpPorts))
@@ -199,17 +195,6 @@ func TestNewServiceReleasesListenersOnWebServerFailure(t *testing.T) {
 				*port = ln.Addr().(*net.TCPAddr).Port
 				tcpReservations = append(tcpReservations, ln)
 				tcpAddresses = append(tcpAddresses, ln.Addr().String())
-			}
-			udpPorts := []*int{&cfg.KCPBindPort, &cfg.QUICBindPort}
-			udpReservations := make([]net.PacketConn, 0, len(udpPorts))
-			udpAddresses := make([]string, 0, len(udpPorts))
-			for _, port := range udpPorts {
-				conn, err := net.ListenPacket("udp", "127.0.0.1:0")
-				require.NoError(t, err)
-				t.Cleanup(func() { _ = conn.Close() })
-				*port = conn.LocalAddr().(*net.UDPAddr).Port
-				udpReservations = append(udpReservations, conn)
-				udpAddresses = append(udpAddresses, conn.LocalAddr().String())
 			}
 
 			webReservation := tcpReservations[len(tcpReservations)-1]
@@ -223,9 +208,6 @@ func TestNewServiceReleasesListenersOnWebServerFailure(t *testing.T) {
 			}
 			for _, ln := range tcpReservations[:len(tcpReservations)-1] {
 				require.NoError(t, ln.Close())
-			}
-			for _, conn := range udpReservations {
-				require.NoError(t, conn.Close())
 			}
 
 			svr, err := NewService(cfg)
@@ -244,11 +226,6 @@ func TestNewServiceReleasesListenersOnWebServerFailure(t *testing.T) {
 				require.ErrorContains(t, err, "failed to find any PEM data in certificate input")
 			}
 			assertLifecyclePorts(t, tcpAddresses, true)
-			for _, address := range udpAddresses {
-				conn, err := net.ListenPacket("udp", address)
-				require.NoError(t, err, "UDP listener %s was not released", address)
-				require.NoError(t, conn.Close())
-			}
 		})
 	}
 }

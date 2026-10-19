@@ -107,8 +107,7 @@ func TestAPIV2SystemInfoEnvelope(t *testing.T) {
 			CurConns:        3,
 			ClientCounts:    4,
 			ProxyTypeCounts: map[string]int64{
-				"tcp":  2,
-				"http": 1,
+				"tcp": 2,
 			},
 		},
 		proxies: map[string]*mem.ProxyStats{},
@@ -118,14 +117,8 @@ func TestAPIV2SystemInfoEnvelope(t *testing.T) {
 	})
 
 	controller := NewController(&v1.ServerConfig{
-		BindPort:              7000,
-		VhostHTTPPort:         8080,
-		VhostHTTPSPort:        8443,
-		TCPMuxHTTPConnectPort: 9000,
-		KCPBindPort:           7001,
-		QUICBindPort:          7002,
-		SubDomainHost:         "example.com",
-		MaxPortsPerClient:     8,
+		BindPort:          7000,
+		MaxPortsPerClient: 8,
 		AllowPorts: []types.PortsRange{
 			{Start: 1000, End: 1002},
 			{Single: 2000},
@@ -154,15 +147,9 @@ func TestAPIV2SystemInfoEnvelope(t *testing.T) {
 		"allowPortsStr",
 		"bindPort",
 		"heartbeatTimeout",
-		"kcpBindPort",
 		"maxPoolCount",
 		"maxPortsPerClient",
-		"quicBindPort",
-		"subdomainHost",
-		"tcpmuxHTTPConnectPort",
 		"tlsForce",
-		"vhostHTTPPort",
-		"vhostHTTPSPort",
 	)
 	assertRawJSONKeysFromMessage(t, rawResp.Data["status"],
 		"clientCounts",
@@ -177,12 +164,6 @@ func TestAPIV2SystemInfoEnvelope(t *testing.T) {
 		t.Fatal("version should be set at top level")
 	}
 	if systemResp.Data.Config.BindPort != 7000 ||
-		systemResp.Data.Config.VhostHTTPPort != 8080 ||
-		systemResp.Data.Config.VhostHTTPSPort != 8443 ||
-		systemResp.Data.Config.TCPMuxHTTPConnectPort != 9000 ||
-		systemResp.Data.Config.KCPBindPort != 7001 ||
-		systemResp.Data.Config.QUICBindPort != 7002 ||
-		systemResp.Data.Config.SubdomainHost != "example.com" ||
 		systemResp.Data.Config.MaxPoolCount != 5 ||
 		systemResp.Data.Config.MaxPortsPerClient != 8 ||
 		systemResp.Data.Config.HeartbeatTimeout != 90 ||
@@ -194,8 +175,7 @@ func TestAPIV2SystemInfoEnvelope(t *testing.T) {
 		systemResp.Data.Status.TotalTrafficOut != 2048 ||
 		systemResp.Data.Status.CurConns != 3 ||
 		systemResp.Data.Status.ClientCounts != 4 ||
-		systemResp.Data.Status.ProxyTypeCounts["tcp"] != 2 ||
-		systemResp.Data.Status.ProxyTypeCounts["http"] != 1 {
+		systemResp.Data.Status.ProxyTypeCounts["tcp"] != 2 {
 		t.Fatalf("status mismatch: %#v", systemResp.Data.Status)
 	}
 }
@@ -356,7 +336,7 @@ func TestAPIV2ClientDetailEnvelope(t *testing.T) {
 	if detailResp.Data.User != "alice" || detailResp.Data.ClientID != "client-a" {
 		t.Fatalf("client detail mismatch: %#v", detailResp.Data)
 	}
-	if detailResp.Data.Status.State != "online" || detailResp.Data.Status.CurConns != 5 || detailResp.Data.Status.ProxyCount != 2 {
+	if detailResp.Data.Status.State != "online" || detailResp.Data.Status.CurConns != 2 || detailResp.Data.Status.ProxyCount != 1 {
 		t.Fatalf("client detail status mismatch: %#v", detailResp.Data.Status)
 	}
 }
@@ -460,8 +440,8 @@ func TestAPIV2ProxyListDetailAndUsers(t *testing.T) {
 	}
 	expectedProxyCounts := map[string]int{
 		"":      1,
-		"alice": 2,
-		"bob":   1,
+		"alice": 1,
+		"bob":   0,
 	}
 	for _, item := range userResp.Data.Items {
 		if item.ClientCount != 1 || item.ProxyCount != expectedProxyCounts[item.User] {
@@ -621,15 +601,6 @@ func TestMatchV2ProxyQueryMatchesSpecFields(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "udp remote port",
-			item: model.V2ProxyResp{Name: "udp-proxy", Spec: model.V2ProxySpec{
-				Type: "udp",
-				UDP:  &model.V2UDPProxySpec{RemotePort: new(7000)},
-			}},
-			q:    "7000",
-			want: true,
-		},
-		{
 			name: "remote port does not match colon form",
 			item: model.V2ProxyResp{Name: "tcp-proxy", Spec: model.V2ProxySpec{
 				Type: "tcp",
@@ -637,42 +608,6 @@ func TestMatchV2ProxyQueryMatchesSpecFields(t *testing.T) {
 			}},
 			q:    ":6000",
 			want: false,
-		},
-		{
-			name: "http custom domain",
-			item: model.V2ProxyResp{Name: "http-proxy", Spec: model.V2ProxySpec{
-				Type: "http",
-				HTTP: &model.V2HTTPProxySpec{CustomDomains: []string{"app.example.com"}},
-			}},
-			q:    "app.example.com",
-			want: true,
-		},
-		{
-			name: "https subdomain",
-			item: model.V2ProxyResp{Name: "https-proxy", Spec: model.V2ProxySpec{
-				Type:  "https",
-				HTTPS: &model.V2HTTPSProxySpec{Subdomain: "portal"},
-			}},
-			q:    "portal",
-			want: true,
-		},
-		{
-			name: "subdomain does not match expanded host",
-			item: model.V2ProxyResp{Name: "https-proxy", Spec: model.V2ProxySpec{
-				Type:  "https",
-				HTTPS: &model.V2HTTPSProxySpec{Subdomain: "portal"},
-			}},
-			q:    "portal.example.com",
-			want: false,
-		},
-		{
-			name: "tcpmux custom domain",
-			item: model.V2ProxyResp{Name: "tcpmux-proxy", Spec: model.V2ProxySpec{
-				Type:   "tcpmux",
-				TCPMux: &model.V2TCPMuxProxySpec{CustomDomains: []string{"mux.example.com"}},
-			}},
-			q:    "mux.example.com",
-			want: true,
 		},
 		{
 			name: "offline shell does not match online spec fields",

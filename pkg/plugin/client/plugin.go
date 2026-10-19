@@ -25,12 +25,10 @@ import (
 	pp "github.com/pires/go-proxyproto"
 
 	v1 "github.com/fatedier/frp/pkg/config/v1"
-	"github.com/fatedier/frp/pkg/vnet"
 )
 
 type PluginContext struct {
-	Name           string
-	VnetController *vnet.Controller
+	Name string
 }
 
 // Creators is used for create plugins to handle connections.

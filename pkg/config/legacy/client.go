@@ -40,8 +40,6 @@ type ClientCommonConf struct {
 	// ServerPort specifies the port to connect to the server on. By default,
 	// this value is 7000.
 	ServerPort int `ini:"server_port" json:"server_port"`
-	// STUN server to help penetrate NAT hole.
-	NatHoleSTUNServer string `ini:"nat_hole_stun_server" json:"nat_hole_stun_server"`
 	// The maximum amount of time a dial to server will wait for a connect to complete.
 	DialServerTimeout int64 `ini:"dial_server_timeout" json:"dial_server_timeout"`
 	// DialServerKeepAlive specifies the interval between keep-alive probes for an active network connection between frpc and frps.
@@ -49,7 +47,7 @@ type ClientCommonConf struct {
 	DialServerKeepAlive int64 `ini:"dial_server_keepalive" json:"dial_server_keepalive"`
 	// ConnectServerLocalIP specifies the address of the client bind when it connect to server.
 	// By default, this value is empty.
-	// this value only use in TCP/Websocket protocol. Not support in KCP protocol.
+	// this value only use in TCP/Websocket protocol.
 	ConnectServerLocalIP string `ini:"connect_server_local_ip" json:"connect_server_local_ip"`
 	// HTTPProxy specifies a proxy address to connect to the server through. If
 	// this value is "", the server will be connected to directly. By default,
@@ -119,13 +117,9 @@ type ClientCommonConf struct {
 	Start []string `ini:"start" json:"start"`
 	// Start map[string]struct{} `json:"start"`
 	// Protocol specifies the protocol to use when interacting with the server.
-	// Valid values are "tcp", "kcp", "quic", "websocket" and "wss". By default, this value
+	// Valid values are "tcp", "websocket" and "wss". By default, this value
 	// is "tcp".
 	Protocol string `ini:"protocol" json:"protocol"`
-	// QUIC protocol options
-	QUICKeepalivePeriod    int `ini:"quic_keepalive_period" json:"quic_keepalive_period"`
-	QUICMaxIdleTimeout     int `ini:"quic_max_idle_timeout" json:"quic_max_idle_timeout"`
-	QUICMaxIncomingStreams int `ini:"quic_max_incoming_streams" json:"quic_max_incoming_streams"`
 	// TLSEnable specifies whether or not TLS should be used when communicating
 	// with the server. If "tls_cert_file" and "tls_key_file" are valid,
 	// client will load the supplied tls configuration.
@@ -159,9 +153,6 @@ type ClientCommonConf struct {
 	HeartbeatTimeout int64 `ini:"heartbeat_timeout" json:"heartbeat_timeout"`
 	// Client meta info
 	Metas map[string]string `ini:"-" json:"metas"`
-	// UDPPacketSize specifies the udp packet size
-	// By default, this value is 1500
-	UDPPacketSize int64 `ini:"udp_packet_size" json:"udp_packet_size"`
 	// Include other config files for proxies.
 	IncludeConfigFiles []string `ini:"includes" json:"includes"`
 	// Enable golang pprof handlers in admin listener.
@@ -194,7 +185,6 @@ func UnmarshalClientConfFromIni(source any) (ClientCommonConf, error) {
 	}
 
 	common.Metas = GetMapWithoutPrefix(s.KeysHash(), "meta_")
-	common.OidcAdditionalEndpointParams = GetMapWithoutPrefix(s.KeysHash(), "oidc_additional_")
 
 	return common, nil
 }
@@ -205,7 +195,7 @@ func LoadAllProxyConfsFromIni(
 	prefix string,
 	source any,
 	start []string,
-) (map[string]ProxyConf, map[string]VisitorConf, error) {
+) (map[string]ProxyConf, error) {
 	f, err := ini.LoadSources(ini.LoadOptions{
 		Insensitive:         false,
 		InsensitiveSections: false,
@@ -214,11 +204,10 @@ func LoadAllProxyConfsFromIni(
 		AllowBooleanKeys:    true,
 	}, source)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	proxyConfs := make(map[string]ProxyConf)
-	visitorConfs := make(map[string]VisitorConf)
 
 	if prefix != "" {
 		prefix += "."
@@ -245,7 +234,7 @@ func LoadAllProxyConfsFromIni(
 	for _, section := range rangeSections {
 		err = renderRangeProxyTemplates(f, section)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to render template for proxy %s: %v", section.Name(), err)
+			return nil, fmt.Errorf("failed to render template for proxy %s: %v", section.Name(), err)
 		}
 	}
 
@@ -261,29 +250,13 @@ func LoadAllProxyConfsFromIni(
 			continue
 		}
 
-		roleType := section.Key("role").String()
-		if roleType == "" {
-			roleType = "server"
+		newConf, newErr := NewProxyConfFromIni(prefix, name, section)
+		if newErr != nil {
+			return nil, fmt.Errorf("failed to parse proxy %s, err: %v", name, newErr)
 		}
-
-		switch roleType {
-		case "server":
-			newConf, newErr := NewProxyConfFromIni(prefix, name, section)
-			if newErr != nil {
-				return nil, nil, fmt.Errorf("failed to parse proxy %s, err: %v", name, newErr)
-			}
-			proxyConfs[prefix+name] = newConf
-		case "visitor":
-			newConf, newErr := NewVisitorConfFromIni(prefix, name, section)
-			if newErr != nil {
-				return nil, nil, fmt.Errorf("failed to parse visitor %s, err: %v", name, newErr)
-			}
-			visitorConfs[prefix+name] = newConf
-		default:
-			return nil, nil, fmt.Errorf("proxy %s role should be 'server' or 'visitor'", name)
-		}
+		proxyConfs[prefix+name] = newConf
 	}
-	return proxyConfs, visitorConfs, nil
+	return proxyConfs, nil
 }
 
 func renderRangeProxyTemplates(f *ini.File, section *ini.Section) error {
@@ -380,7 +353,7 @@ func (cfg *ClientCommonConf) Validate() error {
 		}
 	}
 
-	if !slices.Contains([]string{"tcp", "kcp", "quic", "websocket", "wss"}, cfg.Protocol) {
+	if !slices.Contains([]string{"tcp", "websocket", "wss"}, cfg.Protocol) {
 		return fmt.Errorf("invalid protocol")
 	}
 

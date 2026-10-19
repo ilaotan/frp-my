@@ -6,12 +6,11 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/onsi/ginkgo/v2"
-
 	"github.com/fatedier/frp/test/e2e/framework"
 	"github.com/fatedier/frp/test/e2e/framework/consts"
 	"github.com/fatedier/frp/test/e2e/pkg/port"
 	"github.com/fatedier/frp/test/e2e/pkg/request"
+	"github.com/onsi/ginkgo/v2"
 )
 
 var _ = ginkgo.Describe("[Feature: Server Manager]", func() {
@@ -47,18 +46,6 @@ var _ = ginkgo.Describe("[Feature: Server Manager]", func() {
 			local_port = {{ .%s }}
 			remote_port = {{ .%s }}
 			`, framework.TCPEchoServerPort, consts.PortServerName)
-		clientConf += fmt.Sprintf(`
-			[udp-allowed-in-range]
-			type = udp
-			local_port = {{ .%s }}
-			remote_port = {{ .%s }}
-			`, framework.UDPEchoServerPort, udpPortName)
-		clientConf += fmt.Sprintf(`
-			[udp-port-not-allowed]
-			type = udp
-			local_port = {{ .%s }}
-			remote_port = %d
-			`, framework.UDPEchoServerPort, udpPortNotAllowed)
 
 		f.RunProcesses(serverConf, []string{clientConf})
 
@@ -94,10 +81,7 @@ var _ = ginkgo.Describe("[Feature: Server Manager]", func() {
 		type = tcp
 		local_port = {{ .%s }}
 
-		[udp]
-		type = udp
-		local_port = {{ .%s }}
-		`, adminPort, framework.TCPEchoServerPort, framework.UDPEchoServerPort)
+		`, adminPort, framework.TCPEchoServerPort)
 
 		f.RunProcesses(serverConf, []string{clientConf})
 

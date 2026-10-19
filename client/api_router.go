@@ -39,7 +39,6 @@ func (svr *Service) registerRouteHandlers(helper *httppkg.RouterRegisterHelper) 
 	subRouter.HandleFunc("/api/config", httppkg.MakeHTTPHandlerFunc(apiController.GetConfig)).Methods(http.MethodGet)
 	subRouter.HandleFunc("/api/config", httppkg.MakeHTTPHandlerFunc(apiController.PutConfig)).Methods(http.MethodPut)
 	subRouter.HandleFunc("/api/proxy/{name}/config", httppkg.MakeHTTPHandlerFunc(apiController.GetProxyConfig)).Methods(http.MethodGet)
-	subRouter.HandleFunc("/api/visitor/{name}/config", httppkg.MakeHTTPHandlerFunc(apiController.GetVisitorConfig)).Methods(http.MethodGet)
 
 	if svr.storeSource != nil {
 		subRouter.HandleFunc("/api/store/proxies", httppkg.MakeHTTPHandlerFunc(apiController.ListStoreProxies)).Methods(http.MethodGet)
@@ -47,11 +46,6 @@ func (svr *Service) registerRouteHandlers(helper *httppkg.RouterRegisterHelper) 
 		subRouter.HandleFunc("/api/store/proxies/{name}", httppkg.MakeHTTPHandlerFunc(apiController.GetStoreProxy)).Methods(http.MethodGet)
 		subRouter.HandleFunc("/api/store/proxies/{name}", httppkg.MakeHTTPHandlerFunc(apiController.UpdateStoreProxy)).Methods(http.MethodPut)
 		subRouter.HandleFunc("/api/store/proxies/{name}", httppkg.MakeHTTPHandlerFunc(apiController.DeleteStoreProxy)).Methods(http.MethodDelete)
-		subRouter.HandleFunc("/api/store/visitors", httppkg.MakeHTTPHandlerFunc(apiController.ListStoreVisitors)).Methods(http.MethodGet)
-		subRouter.HandleFunc("/api/store/visitors", httppkg.MakeHTTPHandlerFunc(apiController.CreateStoreVisitor)).Methods(http.MethodPost)
-		subRouter.HandleFunc("/api/store/visitors/{name}", httppkg.MakeHTTPHandlerFunc(apiController.GetStoreVisitor)).Methods(http.MethodGet)
-		subRouter.HandleFunc("/api/store/visitors/{name}", httppkg.MakeHTTPHandlerFunc(apiController.UpdateStoreVisitor)).Methods(http.MethodPut)
-		subRouter.HandleFunc("/api/store/visitors/{name}", httppkg.MakeHTTPHandlerFunc(apiController.DeleteStoreVisitor)).Methods(http.MethodDelete)
 	}
 
 	subRouter.Handle("/favicon.ico", http.FileServer(helper.AssetsFS)).Methods("GET")

@@ -20,24 +20,14 @@ import (
 	v1 "github.com/fatedier/frp/pkg/config/v1"
 )
 
-func cloneConfigurers(
-	proxies []v1.ProxyConfigurer,
-	visitors []v1.VisitorConfigurer,
-) ([]v1.ProxyConfigurer, []v1.VisitorConfigurer, error) {
+func cloneConfigurers(proxies []v1.ProxyConfigurer) ([]v1.ProxyConfigurer, error) {
 	clonedProxies := make([]v1.ProxyConfigurer, 0, len(proxies))
-	clonedVisitors := make([]v1.VisitorConfigurer, 0, len(visitors))
 
 	for _, cfg := range proxies {
 		if cfg == nil {
-			return nil, nil, fmt.Errorf("proxy cannot be nil")
+			return nil, fmt.Errorf("proxy cannot be nil")
 		}
 		clonedProxies = append(clonedProxies, cfg.Clone())
 	}
-	for _, cfg := range visitors {
-		if cfg == nil {
-			return nil, nil, fmt.Errorf("visitor cannot be nil")
-		}
-		clonedVisitors = append(clonedVisitors, cfg.Clone())
-	}
-	return clonedProxies, clonedVisitors, nil
+	return clonedProxies, nil
 }

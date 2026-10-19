@@ -5,12 +5,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onsi/ginkgo/v2"
-
 	"github.com/fatedier/frp/test/e2e/framework"
 	"github.com/fatedier/frp/test/e2e/framework/consts"
 	"github.com/fatedier/frp/test/e2e/pkg/cert"
 	"github.com/fatedier/frp/test/e2e/pkg/port"
+	"github.com/onsi/ginkgo/v2"
 )
 
 type generalTestConfigures struct {
@@ -25,10 +24,6 @@ type generalTestConfigures struct {
 
 func renderBindPortConfig(protocol string) string {
 	switch protocol {
-	case "kcp":
-		return fmt.Sprintf(`kcpBindPort = {{ .%s }}`, consts.PortServerName)
-	case "quic":
-		return fmt.Sprintf(`quicBindPort = {{ .%s }}`, consts.PortServerName)
 	default:
 		return ""
 	}
@@ -46,7 +41,6 @@ func runClientServerTest(f *framework.Framework, configures *generalTestConfigur
 	`, configures.server)
 
 	tcpPortName := port.GenName("TCP")
-	udpPortName := port.GenName("UDP")
 	clientConf += fmt.Sprintf(`
 		%s
 
@@ -55,15 +49,8 @@ func runClientServerTest(f *framework.Framework, configures *generalTestConfigur
 		type = "tcp"
 		localPort = {{ .%s }}
 		remotePort = {{ .%s }}
-
-		[[proxies]]
-		name = "udp"
-		type = "udp"
-		localPort = {{ .%s }}
-		remotePort = {{ .%s }}
 		`, configures.client,
 		framework.TCPEchoServerPort, tcpPortName,
-		framework.UDPEchoServerPort, udpPortName,
 	)
 
 	clientConfs := []string{clientConf}
@@ -85,11 +72,9 @@ func runClientServerTest(f *framework.Framework, configures *generalTestConfigur
 	}
 
 	framework.NewRequestExpect(f).PortName(tcpPortName).ExpectError(configures.expectError).Explain("tcp proxy").Ensure()
-	framework.NewRequestExpect(f).Protocol("udp").
-		PortName(udpPortName).ExpectError(configures.expectError).Explain("udp proxy").Ensure()
 }
 
-// defineClientServerTest test a normal tcp and udp proxy with specified TestConfigures.
+// defineClientServerTest test a normal tcp proxy with specified TestConfigures.
 func defineClientServerTest(desc string, f *framework.Framework, configures *generalTestConfigures) {
 	ginkgo.It(desc, func() {
 		runClientServerTest(f, configures)
@@ -100,7 +85,7 @@ var _ = ginkgo.Describe("[Feature: Client-Server]", func() {
 	f := framework.NewDefaultFramework()
 
 	ginkgo.Describe("Protocol", func() {
-		supportProtocols := []string{"tcp", "kcp", "quic", "websocket"}
+		supportProtocols := []string{"tcp", "websocket"}
 		for _, protocol := range supportProtocols {
 			configures := &generalTestConfigures{
 				server: fmt.Sprintf(`
@@ -154,7 +139,7 @@ var _ = ginkgo.Describe("[Feature: Client-Server]", func() {
 	})
 
 	ginkgo.Describe("TLS", func() {
-		supportProtocols := []string{"tcp", "kcp", "quic", "websocket"}
+		supportProtocols := []string{"tcp", "websocket"}
 		for _, protocol := range supportProtocols {
 			tmp := protocol
 			// Since v0.50.0, the default value of tls_enable has been changed to true.
@@ -184,7 +169,7 @@ var _ = ginkgo.Describe("[Feature: Client-Server]", func() {
 	})
 
 	ginkgo.Describe("TLS with custom certificate", func() {
-		supportProtocols := []string{"tcp", "kcp", "quic", "websocket"}
+		supportProtocols := []string{"tcp", "websocket"}
 
 		var (
 			caCrtPath                    string
@@ -298,7 +283,7 @@ var _ = ginkgo.Describe("[Feature: Client-Server]", func() {
 	})
 
 	ginkgo.Describe("TLS with disableCustomTLSFirstByte set to false", func() {
-		supportProtocols := []string{"tcp", "kcp", "quic", "websocket"}
+		supportProtocols := []string{"tcp", "websocket"}
 		for _, protocol := range supportProtocols {
 			tmp := protocol
 			defineClientServerTest("TLS over "+strings.ToUpper(tmp), f, &generalTestConfigures{
@@ -314,7 +299,7 @@ var _ = ginkgo.Describe("[Feature: Client-Server]", func() {
 	})
 
 	ginkgo.Describe("IPv6 bind address", func() {
-		supportProtocols := []string{"tcp", "kcp", "quic", "websocket"}
+		supportProtocols := []string{"tcp", "websocket"}
 		for _, protocol := range supportProtocols {
 			tmp := protocol
 			defineClientServerTest("IPv6 bind address: "+strings.ToUpper(tmp), f, &generalTestConfigures{
@@ -329,21 +314,4 @@ var _ = ginkgo.Describe("[Feature: Client-Server]", func() {
 		}
 	})
 
-	ginkgo.Describe("Use same port for bindPort and vhostHTTPSPort", func() {
-		supportProtocols := []string{"tcp", "kcp", "quic", "websocket"}
-		for _, protocol := range supportProtocols {
-			tmp := protocol
-			defineClientServerTest("Use same port for bindPort and vhostHTTPSPort: "+strings.ToUpper(tmp), f, &generalTestConfigures{
-				server: fmt.Sprintf(`
-					vhostHTTPSPort = {{ .%s }}
-					%s
-					`, consts.PortServerName, renderBindPortConfig(protocol)),
-				// transport.tls.disableCustomTLSFirstByte should set to false when vhostHTTPSPort is same as bindPort
-				client: fmt.Sprintf(`
-					transport.protocol = "%s"
-					transport.tls.disableCustomTLSFirstByte = false
-					`, protocol),
-			})
-		}
-	})
 })

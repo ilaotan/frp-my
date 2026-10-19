@@ -25,46 +25,29 @@ import (
 )
 
 const (
-	V2TypeLogin              uint16 = 1
-	V2TypeLoginResp          uint16 = 2
-	V2TypeNewProxy           uint16 = 3
-	V2TypeNewProxyResp       uint16 = 4
-	V2TypeCloseProxy         uint16 = 5
-	V2TypeNewWorkConn        uint16 = 6
-	V2TypeReqWorkConn        uint16 = 7
-	V2TypeStartWorkConn      uint16 = 8
-	V2TypeNewVisitorConn     uint16 = 9
-	V2TypeNewVisitorConnResp uint16 = 10
-	V2TypePing               uint16 = 11
-	V2TypePong               uint16 = 12
-	V2TypeUDPPacket          uint16 = 13
-	V2TypeNatHoleVisitor     uint16 = 14
-	V2TypeNatHoleClient      uint16 = 15
-	V2TypeNatHoleResp        uint16 = 16
-	V2TypeNatHoleSid         uint16 = 17
-	V2TypeNatHoleReport      uint16 = 18
-	V2TypeUDPPacketBinary    uint16 = 19
+	V2TypeLogin         uint16 = 1
+	V2TypeLoginResp     uint16 = 2
+	V2TypeNewProxy      uint16 = 3
+	V2TypeNewProxyResp  uint16 = 4
+	V2TypeCloseProxy    uint16 = 5
+	V2TypeNewWorkConn   uint16 = 6
+	V2TypeReqWorkConn   uint16 = 7
+	V2TypeStartWorkConn uint16 = 8
+	V2TypePing          uint16 = 11
+	V2TypePong          uint16 = 12
 )
 
 var v2MsgTypeMap = map[uint16]any{
-	V2TypeLogin:              Login{},
-	V2TypeLoginResp:          LoginResp{},
-	V2TypeNewProxy:           NewProxy{},
-	V2TypeNewProxyResp:       NewProxyResp{},
-	V2TypeCloseProxy:         CloseProxy{},
-	V2TypeNewWorkConn:        NewWorkConn{},
-	V2TypeReqWorkConn:        ReqWorkConn{},
-	V2TypeStartWorkConn:      StartWorkConn{},
-	V2TypeNewVisitorConn:     NewVisitorConn{},
-	V2TypeNewVisitorConnResp: NewVisitorConnResp{},
-	V2TypePing:               Ping{},
-	V2TypePong:               Pong{},
-	V2TypeUDPPacket:          UDPPacket{},
-	V2TypeNatHoleVisitor:     NatHoleVisitor{},
-	V2TypeNatHoleClient:      NatHoleClient{},
-	V2TypeNatHoleResp:        NatHoleResp{},
-	V2TypeNatHoleSid:         NatHoleSid{},
-	V2TypeNatHoleReport:      NatHoleReport{},
+	V2TypeLogin:         Login{},
+	V2TypeLoginResp:     LoginResp{},
+	V2TypeNewProxy:      NewProxy{},
+	V2TypeNewProxyResp:  NewProxyResp{},
+	V2TypeCloseProxy:    CloseProxy{},
+	V2TypeNewWorkConn:   NewWorkConn{},
+	V2TypeReqWorkConn:   ReqWorkConn{},
+	V2TypeStartWorkConn: StartWorkConn{},
+	V2TypePing:          Ping{},
+	V2TypePong:          Pong{},
 }
 
 var v2MsgReflectTypeMap, v2MsgTypeIDMap = buildV2MsgTypeMaps()

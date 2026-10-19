@@ -11,14 +11,7 @@ type ProxyDefinition struct {
 	Name string `json:"name"`
 	Type string `json:"type"`
 
-	TCP    *v1.TCPProxyConfig    `json:"tcp,omitempty"`
-	UDP    *v1.UDPProxyConfig    `json:"udp,omitempty"`
-	HTTP   *v1.HTTPProxyConfig   `json:"http,omitempty"`
-	HTTPS  *v1.HTTPSProxyConfig  `json:"https,omitempty"`
-	TCPMux *v1.TCPMuxProxyConfig `json:"tcpmux,omitempty"`
-	STCP   *v1.STCPProxyConfig   `json:"stcp,omitempty"`
-	SUDP   *v1.SUDPProxyConfig   `json:"sudp,omitempty"`
-	XTCP   *v1.XTCPProxyConfig   `json:"xtcp,omitempty"`
+	TCP *v1.TCPProxyConfig `json:"tcp,omitempty"`
 }
 
 func (p *ProxyDefinition) Validate(pathName string, isUpdate bool) error {
@@ -68,20 +61,6 @@ func ProxyDefinitionFromConfigurer(cfg v1.ProxyConfigurer) (ProxyDefinition, err
 	switch c := cfg.(type) {
 	case *v1.TCPProxyConfig:
 		payload.TCP = c
-	case *v1.UDPProxyConfig:
-		payload.UDP = c
-	case *v1.HTTPProxyConfig:
-		payload.HTTP = c
-	case *v1.HTTPSProxyConfig:
-		payload.HTTPS = c
-	case *v1.TCPMuxProxyConfig:
-		payload.TCPMux = c
-	case *v1.STCPProxyConfig:
-		payload.STCP = c
-	case *v1.SUDPProxyConfig:
-		payload.SUDP = c
-	case *v1.XTCPProxyConfig:
-		payload.XTCP = c
 	default:
 		return ProxyDefinition{}, fmt.Errorf("unsupported proxy configurer type %T", cfg)
 	}
@@ -99,50 +78,10 @@ func (p *ProxyDefinition) activeBlock() (v1.ProxyConfigurer, string, int) {
 		block = p.TCP
 		blockType = "tcp"
 	}
-	if p.UDP != nil {
-		count++
-		block = p.UDP
-		blockType = "udp"
-	}
-	if p.HTTP != nil {
-		count++
-		block = p.HTTP
-		blockType = "http"
-	}
-	if p.HTTPS != nil {
-		count++
-		block = p.HTTPS
-		blockType = "https"
-	}
-	if p.TCPMux != nil {
-		count++
-		block = p.TCPMux
-		blockType = "tcpmux"
-	}
-	if p.STCP != nil {
-		count++
-		block = p.STCP
-		blockType = "stcp"
-	}
-	if p.SUDP != nil {
-		count++
-		block = p.SUDP
-		blockType = "sudp"
-	}
-	if p.XTCP != nil {
-		count++
-		block = p.XTCP
-		blockType = "xtcp"
-	}
 
 	return block, blockType, count
 }
 
 func IsProxyType(typ string) bool {
-	switch typ {
-	case "tcp", "udp", "http", "https", "tcpmux", "stcp", "sudp", "xtcp":
-		return true
-	default:
-		return false
-	}
+	return typ == "tcp"
 }

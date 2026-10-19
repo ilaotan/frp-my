@@ -17,11 +17,9 @@ package validation
 import (
 	"errors"
 	"fmt"
-	"net/netip"
 	"slices"
 	"strings"
 
-	"golang.org/x/net/http/httpguts"
 	"k8s.io/apimachinery/pkg/util/validation"
 
 	v1 "github.com/fatedier/frp/pkg/config/v1"
@@ -73,167 +71,17 @@ func validateProxyBaseConfigForServer(c *v1.ProxyBaseConfig) error {
 	return nil
 }
 
-func validateDomainConfigForClient(c *v1.DomainConfig) error {
-	if c.SubDomain == "" && len(c.CustomDomains) == 0 {
-		return errors.New("subdomain and custom domains should not be both empty")
-	}
-	return nil
-}
-
-func validateDomainConfigForServer(c *v1.DomainConfig, s *v1.ServerConfig) error {
-	subDomainHost := strings.ToLower(s.SubDomainHost)
-	for _, domain := range c.CustomDomains {
-		canonicalDomain := strings.ToLower(domain)
-		if subDomainHost != "" && len(strings.Split(subDomainHost, ".")) < len(strings.Split(canonicalDomain, ".")) {
-			if strings.HasSuffix(canonicalDomain, "."+subDomainHost) {
-				return fmt.Errorf("custom domain [%s] should not belong to subdomain host [%s]", domain, s.SubDomainHost)
-			}
-		}
-	}
-
-	if c.SubDomain != "" {
-		if s.SubDomainHost == "" {
-			return errors.New("subdomain is not supported because this feature is not enabled in server")
-		}
-
-		if strings.Contains(c.SubDomain, ".") || strings.Contains(c.SubDomain, "*") {
-			return errors.New("'.' and '*' are not supported in subdomain")
-		}
-	}
-	return nil
-}
-
 func ValidateProxyConfigurerForClient(c v1.ProxyConfigurer) error {
 	base := c.GetBaseConfig()
 	if err := validateProxyBaseConfigForClient(base); err != nil {
 		return err
 	}
 
-	switch v := c.(type) {
+	switch c.(type) {
 	case *v1.TCPProxyConfig:
-		return validateTCPProxyConfigForClient(v)
-	case *v1.UDPProxyConfig:
-		return validateUDPProxyConfigForClient(v)
-	case *v1.TCPMuxProxyConfig:
-		return validateTCPMuxProxyConfigForClient(v)
-	case *v1.HTTPProxyConfig:
-		return validateHTTPProxyConfigForClient(v)
-	case *v1.HTTPSProxyConfig:
-		return validateHTTPSProxyConfigForClient(v)
-	case *v1.STCPProxyConfig:
-		return validateSTCPProxyConfigForClient(v)
-	case *v1.XTCPProxyConfig:
-		return validateXTCPProxyConfigForClient(v)
-	case *v1.SUDPProxyConfig:
-		return validateSUDPProxyConfigForClient(v)
+		return nil
 	}
 	return errors.New("unknown proxy config type")
-}
-
-func validateTCPProxyConfigForClient(c *v1.TCPProxyConfig) error {
-	return nil
-}
-
-func validateUDPProxyConfigForClient(c *v1.UDPProxyConfig) error {
-	return nil
-}
-
-func validateTCPMuxProxyConfigForClient(c *v1.TCPMuxProxyConfig) error {
-	if err := validateDomainConfigForClient(&c.DomainConfig); err != nil {
-		return err
-	}
-
-	if !slices.Contains([]string{string(v1.TCPMultiplexerHTTPConnect)}, c.Multiplexer) {
-		return fmt.Errorf("not support multiplexer: %s", c.Multiplexer)
-	}
-	return nil
-}
-
-func validateHTTPProxyConfigForClient(c *v1.HTTPProxyConfig) error {
-	if err := validateDomainConfigForClient(&c.DomainConfig); err != nil {
-		return err
-	}
-	if err := validateAllowIPs(c.AllowIPs); err != nil {
-		return err
-	}
-	if err := validateHTTPAuthHeader(c); err != nil {
-		return err
-	}
-	return validateHTTPAuthPagePath(c)
-}
-
-// validateHTTPAuthPagePath checks that the configured login page base path is a
-// plain absolute path that can't be resolved to something else.
-func validateHTTPAuthPagePath(c *v1.HTTPProxyConfig) error {
-	pagePath := c.HTTPAuthPagePath
-	if pagePath == "" {
-		return nil
-	}
-	if c.HTTPAuthHeader == "" {
-		return errors.New("httpAuthPagePath requires httpAuthHeader to be set")
-	}
-	if !strings.HasPrefix(pagePath, "/") || pagePath == "/" {
-		return fmt.Errorf("httpAuthPagePath %q should be an absolute path like \"/my-auth\"", pagePath)
-	}
-	if strings.ContainsAny(pagePath, "?# \t\r\n") {
-		return fmt.Errorf("httpAuthPagePath %q should not contain whitespace, '?' or '#'", pagePath)
-	}
-	if strings.Contains(pagePath, "..") || strings.Contains(pagePath, "//") {
-		return fmt.Errorf("httpAuthPagePath %q should not contain '..' or '//'", pagePath)
-	}
-	return nil
-}
-
-// validateHTTPAuthHeader makes sure the configured credential header is a legal
-// HTTP header name and is actually used by some credentials.
-func validateHTTPAuthHeader(c *v1.HTTPProxyConfig) error {
-	if c.HTTPAuthHeader == "" {
-		return nil
-	}
-	if !httpguts.ValidHeaderFieldName(c.HTTPAuthHeader) {
-		return fmt.Errorf("httpAuthHeader %q is not a valid HTTP header name", c.HTTPAuthHeader)
-	}
-	if c.HTTPUser == "" && c.HTTPPassword == "" {
-		return errors.New("httpAuthHeader is set but httpUser and httpPassword are both empty")
-	}
-	return nil
-}
-
-// validateAllowIPs checks that every entry is a valid IP address or CIDR block,
-// so a typo is reported when the config is loaded instead of failing at runtime.
-func validateAllowIPs(allowIPs []string) error {
-	for _, raw := range allowIPs {
-		entry := strings.TrimSpace(raw)
-		if entry == "" {
-			return errors.New("allowIPs should not contain empty entries")
-		}
-		if strings.Contains(entry, "/") {
-			if _, err := netip.ParsePrefix(entry); err != nil {
-				return fmt.Errorf("allowIPs contains invalid CIDR %q", entry)
-			}
-			continue
-		}
-		if _, err := netip.ParseAddr(entry); err != nil {
-			return fmt.Errorf("allowIPs contains invalid IP %q", entry)
-		}
-	}
-	return nil
-}
-
-func validateHTTPSProxyConfigForClient(c *v1.HTTPSProxyConfig) error {
-	return validateDomainConfigForClient(&c.DomainConfig)
-}
-
-func validateSTCPProxyConfigForClient(c *v1.STCPProxyConfig) error {
-	return nil
-}
-
-func validateXTCPProxyConfigForClient(c *v1.XTCPProxyConfig) error {
-	return nil
-}
-
-func validateSUDPProxyConfigForClient(c *v1.SUDPProxyConfig) error {
-	return nil
 }
 
 func ValidateProxyConfigurerForServer(c v1.ProxyConfigurer, s *v1.ServerConfig) error {
@@ -242,71 +90,11 @@ func ValidateProxyConfigurerForServer(c v1.ProxyConfigurer, s *v1.ServerConfig) 
 		return err
 	}
 
-	switch v := c.(type) {
+	switch c.(type) {
 	case *v1.TCPProxyConfig:
-		return validateTCPProxyConfigForServer(v, s)
-	case *v1.UDPProxyConfig:
-		return validateUDPProxyConfigForServer(v, s)
-	case *v1.TCPMuxProxyConfig:
-		return validateTCPMuxProxyConfigForServer(v, s)
-	case *v1.HTTPProxyConfig:
-		return validateHTTPProxyConfigForServer(v, s)
-	case *v1.HTTPSProxyConfig:
-		return validateHTTPSProxyConfigForServer(v, s)
-	case *v1.STCPProxyConfig:
-		return validateSTCPProxyConfigForServer(v, s)
-	case *v1.XTCPProxyConfig:
-		return validateXTCPProxyConfigForServer(v, s)
-	case *v1.SUDPProxyConfig:
-		return validateSUDPProxyConfigForServer(v, s)
-	default:
-		return errors.New("unknown proxy config type")
+		return nil
 	}
-}
-
-func validateTCPProxyConfigForServer(c *v1.TCPProxyConfig, s *v1.ServerConfig) error {
-	return nil
-}
-
-func validateUDPProxyConfigForServer(c *v1.UDPProxyConfig, s *v1.ServerConfig) error {
-	return nil
-}
-
-func validateTCPMuxProxyConfigForServer(c *v1.TCPMuxProxyConfig, s *v1.ServerConfig) error {
-	if c.Multiplexer == string(v1.TCPMultiplexerHTTPConnect) &&
-		s.TCPMuxHTTPConnectPort == 0 {
-		return fmt.Errorf("tcpmux with multiplexer httpconnect not supported because this feature is not enabled in server")
-	}
-
-	return validateDomainConfigForServer(&c.DomainConfig, s)
-}
-
-func validateHTTPProxyConfigForServer(c *v1.HTTPProxyConfig, s *v1.ServerConfig) error {
-	if s.VhostHTTPPort == 0 {
-		return fmt.Errorf("type [http] not supported when vhost http port is not set")
-	}
-
-	return validateDomainConfigForServer(&c.DomainConfig, s)
-}
-
-func validateHTTPSProxyConfigForServer(c *v1.HTTPSProxyConfig, s *v1.ServerConfig) error {
-	if s.VhostHTTPSPort == 0 {
-		return fmt.Errorf("type [https] not supported when vhost https port is not set")
-	}
-
-	return validateDomainConfigForServer(&c.DomainConfig, s)
-}
-
-func validateSTCPProxyConfigForServer(c *v1.STCPProxyConfig, s *v1.ServerConfig) error {
-	return nil
-}
-
-func validateXTCPProxyConfigForServer(c *v1.XTCPProxyConfig, s *v1.ServerConfig) error {
-	return nil
-}
-
-func validateSUDPProxyConfigForServer(c *v1.SUDPProxyConfig, s *v1.ServerConfig) error {
-	return nil
+	return errors.New("unknown proxy config type")
 }
 
 // ValidateAnnotations validates that a set of annotations are correctly defined.

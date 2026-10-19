@@ -21,16 +21,7 @@ import (
 )
 
 func init() {
-	pxyConfs := []v1.ProxyConfigurer{
-		&v1.TCPProxyConfig{},
-		&v1.HTTPProxyConfig{},
-		&v1.HTTPSProxyConfig{},
-		&v1.STCPProxyConfig{},
-		&v1.TCPMuxProxyConfig{},
-	}
-	for _, cfg := range pxyConfs {
-		RegisterProxyFactory(reflect.TypeOf(cfg), NewGeneralTCPProxy)
-	}
+	RegisterProxyFactory(reflect.TypeFor[*v1.TCPProxyConfig](), NewGeneralTCPProxy)
 }
 
 // GeneralTCPProxy is a general implementation of Proxy interface for TCP protocol.

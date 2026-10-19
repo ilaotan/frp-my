@@ -32,16 +32,13 @@ import (
 	"github.com/fatedier/frp/pkg/proto/wire"
 	netpkg "github.com/fatedier/frp/pkg/util/net"
 	"github.com/fatedier/frp/pkg/util/version"
-	"github.com/fatedier/frp/pkg/vnet"
 )
 
 type controlSessionDialer struct {
 	ctx context.Context
 
-	common         *v1.ClientCommonConfig
-	auth           *auth.ClientAuth
-	clientSpec     *msg.ClientSpec
-	vnetController *vnet.Controller
+	common *v1.ClientCommonConfig
+	auth   *auth.ClientAuth
 
 	connectorCreator func(context.Context, *v1.ClientCommonConfig) Connector
 }
@@ -83,23 +80,18 @@ func (d *controlSessionDialer) Dial(previousRunID string) (*SessionContext, erro
 		return nil, errors.New(loginRespMsg.Error)
 	}
 
-	var controlRW io.ReadWriter = conn
-	if d.clientSpec == nil || d.clientSpec.Type != "ssh-tunnel" {
-		controlRW, err = d.newControlReadWriter(conn, loginResult.crypto)
-		if err != nil {
-			return nil, fmt.Errorf("create control crypto read writer: %w", err)
-		}
+	controlRW, err := d.newControlReadWriter(conn, loginResult.crypto)
+	if err != nil {
+		return nil, fmt.Errorf("create control crypto read writer: %w", err)
 	}
 
 	success = true
 	return &SessionContext{
-		Common:         d.common,
-		RunID:          loginRespMsg.RunID,
-		Conn:           msg.NewConn(conn, msg.NewReadWriter(controlRW, d.common.Transport.WireProtocol)),
-		Auth:           d.auth,
-		Connector:      newMessageConnector(connector, d.common.Transport.WireProtocol),
-		VnetController: d.vnetController,
-		UDPPacketCodec: loginResult.udpPacketCodec,
+		Common:    d.common,
+		RunID:     loginRespMsg.RunID,
+		Conn:      msg.NewConn(conn, msg.NewReadWriter(controlRW, d.common.Transport.WireProtocol)),
+		Auth:      d.auth,
+		Connector: newMessageConnector(connector, d.common.Transport.WireProtocol),
 	}, nil
 }
 
@@ -117,10 +109,6 @@ func (d *controlSessionDialer) buildLoginMsg(previousRunID string) (*msg.Login, 
 		RunID:     previousRunID,
 		Metas:     d.common.Metadatas,
 	}
-	if d.clientSpec != nil {
-		loginMsg.ClientSpec = *d.clientSpec
-	}
-
 	if err := d.auth.Setter.SetLogin(loginMsg); err != nil {
 		return nil, err
 	}
@@ -128,9 +116,8 @@ func (d *controlSessionDialer) buildLoginMsg(previousRunID string) (*msg.Login, 
 }
 
 type loginExchangeResult struct {
-	resp           *msg.LoginResp
-	crypto         *wire.CryptoContext
-	udpPacketCodec string
+	resp   *msg.LoginResp
+	crypto *wire.CryptoContext
 }
 
 func (d *controlSessionDialer) exchangeLogin(conn net.Conn, loginMsg *msg.Login) (*loginExchangeResult, error) {
@@ -174,7 +161,6 @@ func (d *controlSessionDialer) exchangeLogin(conn net.Conn, loginMsg *msg.Login)
 	}()
 
 	var cryptoContext *wire.CryptoContext
-	var udpPacketCodec string
 	if wireConn != nil {
 		serverHelloFrame, err := wireConn.ReadFrame()
 		if err != nil {
@@ -194,7 +180,6 @@ func (d *controlSessionDialer) exchangeLogin(conn net.Conn, loginMsg *msg.Login)
 		if err != nil {
 			return nil, err
 		}
-		udpPacketCodec = serverHello.Selected.Message.UDPPacketCodec
 	}
 
 	var loginRespMsg msg.LoginResp
@@ -202,9 +187,8 @@ func (d *controlSessionDialer) exchangeLogin(conn net.Conn, loginMsg *msg.Login)
 		return nil, err
 	}
 	return &loginExchangeResult{
-		resp:           &loginRespMsg,
-		crypto:         cryptoContext,
-		udpPacketCodec: udpPacketCodec,
+		resp:   &loginRespMsg,
+		crypto: cryptoContext,
 	}, nil
 }
 

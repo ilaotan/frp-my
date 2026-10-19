@@ -21,7 +21,6 @@ import (
 	"net"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -60,7 +59,7 @@ func (c *trackingConn) Close() error {
 	return c.Conn.Close()
 }
 
-func newTestControlSessionDialer(t *testing.T, protocol string, connector Connector, clientSpec *msg.ClientSpec) *controlSessionDialer {
+func newTestControlSessionDialer(t *testing.T, protocol string, connector Connector) *controlSessionDialer {
 	t.Helper()
 
 	authRuntime, err := auth.BuildClientAuth(&v1.AuthClientConfig{
@@ -78,8 +77,7 @@ func newTestControlSessionDialer(t *testing.T, protocol string, connector Connec
 				WireProtocol: protocol,
 			},
 		},
-		auth:       authRuntime,
-		clientSpec: clientSpec,
+		auth: authRuntime,
 		connectorCreator: func(context.Context, *v1.ClientCommonConfig) Connector {
 			return connector
 		},
@@ -110,14 +108,13 @@ func TestControlSessionDialerDialV1(t *testing.T) {
 		serverErrCh <- rw.WriteMsg(&msg.LoginResp{RunID: "run-v1"})
 	}()
 
-	dialer := newTestControlSessionDialer(t, wire.ProtocolV1, connector, nil)
+	dialer := newTestControlSessionDialer(t, wire.ProtocolV1, connector)
 	sessionCtx, err := dialer.Dial("previous-run-id")
 	require.NoError(t, err)
 	defer sessionCtx.Conn.Close()
 	defer sessionCtx.Connector.Close()
 
 	require.Equal(t, "run-v1", sessionCtx.RunID)
-	require.Empty(t, sessionCtx.UDPPacketCodec)
 	require.NotNil(t, sessionCtx.Conn)
 	require.NotNil(t, sessionCtx.Connector)
 	require.False(t, connector.closed.Load())
@@ -219,14 +216,13 @@ func TestControlSessionDialerDialV2(t *testing.T) {
 		serverErrCh <- nil
 	}()
 
-	dialer := newTestControlSessionDialer(t, wire.ProtocolV2, connector, nil)
+	dialer := newTestControlSessionDialer(t, wire.ProtocolV2, connector)
 	sessionCtx, err := dialer.Dial("")
 	require.NoError(t, err)
 	defer sessionCtx.Conn.Close()
 	defer sessionCtx.Connector.Close()
 
 	require.Equal(t, "run-v2", sessionCtx.RunID)
-	require.Equal(t, wire.UDPPacketCodecBinary, sessionCtx.UDPPacketCodec)
 	require.NotNil(t, sessionCtx.Conn)
 	require.NotNil(t, sessionCtx.Connector)
 	require.False(t, connector.closed.Load())
@@ -251,49 +247,11 @@ func TestControlSessionDialerDialLoginErrorClosesResources(t *testing.T) {
 		serverErrCh <- rw.WriteMsg(&msg.LoginResp{Error: "login denied"})
 	}()
 
-	dialer := newTestControlSessionDialer(t, wire.ProtocolV1, connector, nil)
+	dialer := newTestControlSessionDialer(t, wire.ProtocolV1, connector)
 	sessionCtx, err := dialer.Dial("")
 	require.Nil(t, sessionCtx)
 	require.ErrorContains(t, err, "login denied")
 	require.True(t, clientConn.closed.Load())
 	require.True(t, connector.closed.Load())
-	require.NoError(t, <-serverErrCh)
-}
-
-func TestControlSessionDialerDialSSHTunnelSkipsControlEncryption(t *testing.T) {
-	clientRaw, serverRaw := net.Pipe()
-	defer serverRaw.Close()
-
-	connector := &testConnector{conn: &trackingConn{Conn: clientRaw}}
-	serverErrCh := make(chan error, 1)
-	go func() {
-		rw := msg.NewV1ReadWriter(serverRaw)
-		var loginMsg msg.Login
-		if err := rw.ReadMsgInto(&loginMsg); err != nil {
-			serverErrCh <- err
-			return
-		}
-		if err := rw.WriteMsg(&msg.LoginResp{RunID: "run-ssh-tunnel"}); err != nil {
-			serverErrCh <- err
-			return
-		}
-
-		_ = serverRaw.SetReadDeadline(time.Now().Add(time.Second))
-		var ping msg.Ping
-		if err := rw.ReadMsgInto(&ping); err != nil {
-			serverErrCh <- err
-			return
-		}
-		serverErrCh <- nil
-	}()
-
-	dialer := newTestControlSessionDialer(t, wire.ProtocolV1, connector, &msg.ClientSpec{Type: "ssh-tunnel"})
-	sessionCtx, err := dialer.Dial("")
-	require.NoError(t, err)
-	defer sessionCtx.Conn.Close()
-	defer sessionCtx.Connector.Close()
-
-	require.Equal(t, "run-ssh-tunnel", sessionCtx.RunID)
-	require.NoError(t, sessionCtx.Conn.WriteMsg(&msg.Ping{}))
 	require.NoError(t, <-serverErrCh)
 }

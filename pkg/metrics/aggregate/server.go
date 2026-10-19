@@ -16,18 +16,12 @@ package aggregate
 
 import (
 	"github.com/fatedier/frp/pkg/metrics/mem"
-	"github.com/fatedier/frp/pkg/metrics/prometheus"
 	"github.com/fatedier/frp/server/metrics"
 )
 
 // EnableMem start to mark metrics to memory monitor system.
 func EnableMem() {
 	sm.Add(mem.ServerMetrics)
-}
-
-// EnablePrometheus start to mark metrics to prometheus.
-func EnablePrometheus() {
-	sm.Add(prometheus.ServerMetrics)
 }
 
 var sm = &serverMetrics{}

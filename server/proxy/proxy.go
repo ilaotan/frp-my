@@ -16,7 +16,6 @@ package proxy
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -32,7 +31,6 @@ import (
 	v1 "github.com/fatedier/frp/pkg/config/v1"
 	"github.com/fatedier/frp/pkg/msg"
 	plugin "github.com/fatedier/frp/pkg/plugin/server"
-	"github.com/fatedier/frp/pkg/proto/wire"
 	"github.com/fatedier/frp/pkg/util/limit"
 	netpkg "github.com/fatedier/frp/pkg/util/net"
 	"github.com/fatedier/frp/pkg/util/xlog"
@@ -82,20 +80,18 @@ type Proxy interface {
 }
 
 type BaseProxy struct {
-	name           string
-	rc             *controller.ResourceController
-	listeners      []net.Listener
-	usedPortsNum   int
-	poolCount      int
-	getWorkConnFn  GetWorkConnFn
-	serverCfg      *v1.ServerConfig
-	encryptionKey  []byte
-	limiter        *rate.Limiter
-	userInfo       plugin.UserInfo
-	loginMsg       *msg.Login
-	configurer     v1.ProxyConfigurer
-	wireProtocol   string
-	udpPacketCodec string
+	name          string
+	rc            *controller.ResourceController
+	listeners     []net.Listener
+	usedPortsNum  int
+	poolCount     int
+	getWorkConnFn GetWorkConnFn
+	serverCfg     *v1.ServerConfig
+	encryptionKey []byte
+	limiter       *rate.Limiter
+	userInfo      plugin.UserInfo
+	loginMsg      *msg.Login
+	configurer    v1.ProxyConfigurer
 
 	mu  sync.RWMutex
 	xl  *xlog.Logger
@@ -198,36 +194,6 @@ func (pxy *BaseProxy) GetWorkConnFromPool(src, dst net.Addr) (workConn net.Conn,
 	return
 }
 
-// startVisitorListener sets up a VisitorManager listener for visitor-based proxies (STCP, SUDP).
-func (pxy *BaseProxy) startVisitorListener(secretKey string, allowUsers []string, proxyType string) error {
-	// if allowUsers is empty, only allow same user from proxy
-	if len(allowUsers) == 0 {
-		allowUsers = []string{pxy.GetUserInfo().User}
-	}
-	listener, err := pxy.rc.VisitorManager.Listen(pxy.GetName(), secretKey, allowUsers)
-	if err != nil {
-		return err
-	}
-	pxy.listeners = append(pxy.listeners, listener)
-	pxy.xl.Infof("%s proxy custom listen success", proxyType)
-	pxy.startCommonTCPListenersHandler()
-	return nil
-}
-
-// buildDomains constructs a list of domains from custom domains and subdomain configuration.
-func (pxy *BaseProxy) buildDomains(customDomains []string, subDomain string) []string {
-	domains := make([]string, 0, len(customDomains)+1)
-	for _, d := range customDomains {
-		if d != "" {
-			domains = append(domains, d)
-		}
-	}
-	if subDomain != "" {
-		domains = append(domains, subDomain+"."+pxy.serverCfg.SubDomainHost)
-	}
-	return domains
-}
-
 // startCommonTCPListenersHandler start a goroutine handler for each listener.
 func (pxy *BaseProxy) startCommonTCPListenersHandler() {
 	xl := xlog.FromContextSafe(pxy.ctx)
@@ -317,201 +283,11 @@ func (pxy *BaseProxy) handleUserTCPConnection(userConn net.Conn) {
 	name := pxy.GetName()
 	proxyType := cfg.Type
 	metrics.Server.OpenConnection(name, proxyType)
-	inCount, outCount, _ := pxy.joinUserConnection(local, userConn, proxyType, xl)
+	inCount, outCount, _ := libio.Join(local, userConn)
 	metrics.Server.CloseConnection(name, proxyType)
 	metrics.Server.AddTrafficIn(name, proxyType, inCount)
 	metrics.Server.AddTrafficOut(name, proxyType, outCount)
 	xl.Debugf("join connections closed")
-}
-
-func (pxy *BaseProxy) joinUserConnection(local io.ReadWriteCloser, userConn net.Conn, proxyType string, xl *xlog.Logger) (int64, int64, []error) {
-	visitorWireProtocol := wireProtocolFromConn(userConn)
-	visitorUDPPacketCodec := udpPacketCodecFromConn(userConn)
-	if proxyType == string(v1.ProxyTypeSUDP) {
-		mixed, err := isMixedSUDPPacketEncoding(pxy.wireProtocol, pxy.udpPacketCodec, visitorWireProtocol, visitorUDPPacketCodec)
-		if err != nil {
-			return 0, 0, []error{err}
-		}
-		if mixed {
-			xl.Infof("bridge mixed SUDP payload codecs, proxy [%s/%s], visitor [%s/%s]",
-				normalizeWireProtocol(pxy.wireProtocol), pxy.udpPacketCodec,
-				normalizeWireProtocol(visitorWireProtocol), visitorUDPPacketCodec)
-			return joinSUDPMessageBridge(local, userConn, pxy.wireProtocol, pxy.udpPacketCodec, visitorWireProtocol, visitorUDPPacketCodec, xl)
-		}
-	}
-	return libio.Join(local, userConn)
-}
-
-type wireProtocolGetter interface {
-	WireProtocol() string
-}
-
-type udpPacketCodecGetter interface {
-	UDPPacketCodec() string
-}
-
-func wireProtocolFromConn(conn net.Conn) string {
-	if getter, ok := conn.(wireProtocolGetter); ok {
-		return getter.WireProtocol()
-	}
-	return ""
-}
-
-func udpPacketCodecFromConn(conn net.Conn) string {
-	if getter, ok := conn.(udpPacketCodecGetter); ok {
-		return getter.UDPPacketCodec()
-	}
-	return ""
-}
-
-func isMixedWireProtocol(left, right string) bool {
-	return normalizeWireProtocol(left) != normalizeWireProtocol(right)
-}
-
-func isMixedSUDPPacketEncoding(leftWire, leftCodec, rightWire, rightCodec string) (bool, error) {
-	leftCodec, err := normalizeUDPPacketCodec(leftWire, leftCodec)
-	if err != nil {
-		return false, fmt.Errorf("invalid left SUDP packet encoding: %w", err)
-	}
-	rightCodec, err = normalizeUDPPacketCodec(rightWire, rightCodec)
-	if err != nil {
-		return false, fmt.Errorf("invalid right SUDP packet encoding: %w", err)
-	}
-	return normalizeWireProtocol(leftWire) != normalizeWireProtocol(rightWire) || leftCodec != rightCodec, nil
-}
-
-func normalizeUDPPacketCodec(wireProtocol, codec string) (string, error) {
-	switch wireProtocol {
-	case "", wire.ProtocolV1:
-		if codec != "" {
-			return "", fmt.Errorf("UDP packet codec %q requires wire protocol v2", codec)
-		}
-		return "", nil
-	case wire.ProtocolV2:
-		if codec == "" || codec == wire.UDPPacketCodecBinary {
-			return codec, nil
-		}
-		return "", fmt.Errorf("unsupported UDP packet codec %q", codec)
-	default:
-		return "", fmt.Errorf("unsupported wire protocol %q", wireProtocol)
-	}
-}
-
-func normalizeWireProtocol(wireProtocol string) string {
-	if wireProtocol == wire.ProtocolV2 {
-		return wire.ProtocolV2
-	}
-	return wire.ProtocolV1
-}
-
-func joinSUDPMessageBridge(
-	proxyConn io.ReadWriteCloser,
-	visitorConn io.ReadWriteCloser,
-	proxyWireProtocol string,
-	proxyUDPPacketCodec string,
-	visitorWireProtocol string,
-	visitorUDPPacketCodec string,
-	xl *xlog.Logger,
-) (inCount int64, outCount int64, errs []error) {
-	// The mixed bridge decodes and re-encodes messages, so raw framed byte counts
-	// are not available. Count UDP payload bytes and ignore heartbeat traffic.
-	proxyRW, err := msg.NewUDPPacketReadWriter(proxyConn, proxyWireProtocol, proxyUDPPacketCodec)
-	if err != nil {
-		return 0, 0, []error{err}
-	}
-	visitorRW, err := msg.NewUDPPacketReadWriter(visitorConn, visitorWireProtocol, visitorUDPPacketCodec)
-	if err != nil {
-		return 0, 0, []error{err}
-	}
-
-	var (
-		once       sync.Once
-		wait       sync.WaitGroup
-		recordErrs = make([]error, 2)
-	)
-	closeBoth := func() {
-		_ = proxyConn.Close()
-		_ = visitorConn.Close()
-	}
-
-	wait.Add(2)
-	go func() {
-		defer wait.Done()
-		defer once.Do(closeBoth)
-		recordErrs[0] = bridgeSUDPProxyToVisitor(proxyRW, visitorRW, &outCount, xl)
-	}()
-	go func() {
-		defer wait.Done()
-		defer once.Do(closeBoth)
-		recordErrs[1] = bridgeSUDPVisitorToProxy(visitorRW, proxyRW, &inCount, xl)
-	}()
-	wait.Wait()
-
-	for _, err := range recordErrs {
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-	return
-}
-
-func bridgeSUDPProxyToVisitor(from msg.ReadWriter, to msg.ReadWriter, count *int64, xl *xlog.Logger) error {
-	for {
-		rawMsg, err := from.ReadMsg()
-		if err != nil {
-			return normalizeSUDPBridgeError(err)
-		}
-
-		switch m := rawMsg.(type) {
-		case *msg.UDPPacket:
-			if err := to.WriteMsg(m); err != nil {
-				return normalizeSUDPBridgeError(err)
-			}
-			*count += int64(len(m.Content))
-		case *msg.Ping:
-			traceSUDPBridge(xl, "bridge SUDP ping from proxy to visitor")
-			if err := to.WriteMsg(m); err != nil {
-				return normalizeSUDPBridgeError(err)
-			}
-		default:
-			return fmt.Errorf("unexpected SUDP proxy message %T", rawMsg)
-		}
-	}
-}
-
-func bridgeSUDPVisitorToProxy(from msg.ReadWriter, to msg.ReadWriter, count *int64, xl *xlog.Logger) error {
-	for {
-		rawMsg, err := from.ReadMsg()
-		if err != nil {
-			return normalizeSUDPBridgeError(err)
-		}
-
-		switch m := rawMsg.(type) {
-		case *msg.UDPPacket:
-			if err := to.WriteMsg(m); err != nil {
-				return normalizeSUDPBridgeError(err)
-			}
-			*count += int64(len(m.Content))
-		case *msg.Ping:
-			traceSUDPBridge(xl, "drop SUDP ping from visitor to proxy")
-			continue
-		default:
-			return fmt.Errorf("unexpected SUDP visitor message %T", rawMsg)
-		}
-	}
-}
-
-func normalizeSUDPBridgeError(err error) error {
-	if err == nil || errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
-		return nil
-	}
-	return err
-}
-
-func traceSUDPBridge(xl *xlog.Logger, format string, args ...any) {
-	if xl != nil {
-		xl.Tracef(format, args...)
-	}
 }
 
 type Options struct {
@@ -523,8 +299,6 @@ type Options struct {
 	Configurer         v1.ProxyConfigurer
 	ServerCfg          *v1.ServerConfig
 	EncryptionKey      []byte
-	WireProtocol       string
-	UDPPacketCodec     string
 }
 
 func NewProxy(ctx context.Context, options *Options) (pxy Proxy, err error) {
@@ -538,21 +312,19 @@ func NewProxy(ctx context.Context, options *Options) (pxy Proxy, err error) {
 	}
 
 	basePxy := BaseProxy{
-		name:           configurer.GetBaseConfig().Name,
-		rc:             options.ResourceController,
-		listeners:      make([]net.Listener, 0),
-		poolCount:      options.PoolCount,
-		getWorkConnFn:  options.GetWorkConnFn,
-		serverCfg:      options.ServerCfg,
-		encryptionKey:  options.EncryptionKey,
-		limiter:        limiter,
-		xl:             xl,
-		ctx:            xlog.NewContext(ctx, xl),
-		userInfo:       options.UserInfo,
-		loginMsg:       options.LoginMsg,
-		configurer:     configurer,
-		wireProtocol:   options.WireProtocol,
-		udpPacketCodec: options.UDPPacketCodec,
+		name:          configurer.GetBaseConfig().Name,
+		rc:            options.ResourceController,
+		listeners:     make([]net.Listener, 0),
+		poolCount:     options.PoolCount,
+		getWorkConnFn: options.GetWorkConnFn,
+		serverCfg:     options.ServerCfg,
+		encryptionKey: options.EncryptionKey,
+		limiter:       limiter,
+		xl:            xl,
+		ctx:           xlog.NewContext(ctx, xl),
+		userInfo:      options.UserInfo,
+		loginMsg:      options.LoginMsg,
+		configurer:    configurer,
 	}
 
 	factory := proxyFactoryRegistry[reflect.TypeOf(configurer)]

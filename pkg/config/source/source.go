@@ -19,11 +19,11 @@ import (
 )
 
 // Source is the interface for configuration sources.
-// A Source provides proxy and visitor configurations from various backends.
+// A Source provides proxy configurations from various backends.
 // Aggregator currently uses the built-in config source as base and an optional
 // store source as higher-priority overlay.
 type Source interface {
-	// Load loads the proxy and visitor configurations from this source.
+	// Load loads the proxy configurations from this source.
 	// Returns the loaded configurations and any error encountered.
 	// A disabled entry in one source is source-local filtering, not a cross-source
 	// tombstone for entries from lower-priority sources.
@@ -33,5 +33,5 @@ type Source interface {
 	//   - When err is non-nil, Aggregator aborts the merge and returns the error.
 	//   - To publish best-effort or partial results, return those results with
 	//     err set to nil.
-	Load() (proxies []v1.ProxyConfigurer, visitors []v1.VisitorConfigurer, err error)
+	Load() (proxies []v1.ProxyConfigurer, err error)
 }

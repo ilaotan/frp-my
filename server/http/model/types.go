@@ -19,19 +19,13 @@ import (
 )
 
 type ServerInfoResp struct {
-	Version               string `json:"version"`
-	BindPort              int    `json:"bindPort"`
-	VhostHTTPPort         int    `json:"vhostHTTPPort"`
-	VhostHTTPSPort        int    `json:"vhostHTTPSPort"`
-	TCPMuxHTTPConnectPort int    `json:"tcpmuxHTTPConnectPort"`
-	KCPBindPort           int    `json:"kcpBindPort"`
-	QUICBindPort          int    `json:"quicBindPort"`
-	SubdomainHost         string `json:"subdomainHost"`
-	MaxPoolCount          int64  `json:"maxPoolCount"`
-	MaxPortsPerClient     int64  `json:"maxPortsPerClient"`
-	HeartBeatTimeout      int64  `json:"heartbeatTimeout"`
-	AllowPortsStr         string `json:"allowPortsStr,omitempty"`
-	TLSForce              bool   `json:"tlsForce,omitempty"`
+	Version           string `json:"version"`
+	BindPort          int    `json:"bindPort"`
+	MaxPoolCount      int64  `json:"maxPoolCount"`
+	MaxPortsPerClient int64  `json:"maxPortsPerClient"`
+	HeartBeatTimeout  int64  `json:"heartbeatTimeout"`
+	AllowPortsStr     string `json:"allowPortsStr,omitempty"`
+	TLSForce          bool   `json:"tlsForce,omitempty"`
 
 	TotalTrafficIn  int64            `json:"totalTrafficIn"`
 	TotalTrafficOut int64            `json:"totalTrafficOut"`
@@ -62,38 +56,6 @@ type BaseOutConf struct {
 type TCPOutConf struct {
 	BaseOutConf
 	RemotePort int `json:"remotePort"`
-}
-
-type TCPMuxOutConf struct {
-	BaseOutConf
-	v1.DomainConfig
-	Multiplexer     string `json:"multiplexer"`
-	RouteByHTTPUser string `json:"routeByHTTPUser"`
-}
-
-type UDPOutConf struct {
-	BaseOutConf
-	RemotePort int `json:"remotePort"`
-}
-
-type HTTPOutConf struct {
-	BaseOutConf
-	v1.DomainConfig
-	Locations         []string `json:"locations"`
-	HostHeaderRewrite string   `json:"hostHeaderRewrite"`
-}
-
-type HTTPSOutConf struct {
-	BaseOutConf
-	v1.DomainConfig
-}
-
-type STCPOutConf struct {
-	BaseOutConf
-}
-
-type XTCPOutConf struct {
-	BaseOutConf
 }
 
 // Get proxy info.

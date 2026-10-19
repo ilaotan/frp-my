@@ -3,59 +3,23 @@ package features
 import (
 	"fmt"
 	"strconv"
-	"sync"
 	"time"
-
-	"github.com/onsi/ginkgo/v2"
 
 	"github.com/fatedier/frp/test/e2e/framework"
 	"github.com/fatedier/frp/test/e2e/framework/consts"
-	"github.com/fatedier/frp/test/e2e/mock/server/httpserver"
 	"github.com/fatedier/frp/test/e2e/mock/server/streamserver"
 	"github.com/fatedier/frp/test/e2e/pkg/request"
+	"github.com/onsi/ginkgo/v2"
 )
 
 var _ = ginkgo.Describe("[Feature: Group]", func() {
 	f := framework.NewDefaultFramework()
-
-	newHTTPServer := func(port int, respContent string) *httpserver.Server {
-		return httpserver.New(
-			httpserver.WithBindPort(port),
-			httpserver.WithHandler(framework.SpecifiedHTTPBodyHandler([]byte(respContent))),
-		)
-	}
 
 	validateFooBarResponse := func(resp *request.Response) bool {
 		if string(resp.Content) == "foo" || string(resp.Content) == "bar" {
 			return true
 		}
 		return false
-	}
-
-	doFooBarHTTPRequest := func(vhostPort int, host string) []string {
-		results := []string{}
-		var wait sync.WaitGroup
-		var mu sync.Mutex
-		expectFn := func() {
-			framework.NewRequestExpect(f).Port(vhostPort).
-				RequestModify(func(r *request.Request) {
-					r.HTTP().HTTPHost(host)
-				}).
-				Ensure(validateFooBarResponse, func(resp *request.Response) bool {
-					mu.Lock()
-					defer mu.Unlock()
-					results = append(results, string(resp.Content))
-					return true
-				})
-		}
-		for range 10 {
-			wait.Go(func() {
-				expectFn()
-			})
-		}
-
-		wait.Wait()
-		return results
 	}
 
 	ginkgo.Describe("Load Balancing", func() {
@@ -176,84 +140,5 @@ var _ = ginkgo.Describe("[Feature: Group]", func() {
 			framework.ExpectContainElements(results, []string{"foo", "bar"})
 		})
 
-		ginkgo.It("HTTP", func() {
-			vhostPort := f.AllocPort()
-			serverConf := consts.LegacyDefaultServerConfig + fmt.Sprintf(`
-			vhost_http_port = %d
-			`, vhostPort)
-			clientConf := consts.LegacyDefaultClientConfig
-
-			fooPort := f.AllocPort()
-			fooServer := newHTTPServer(fooPort, "foo")
-			f.RunServer("", fooServer)
-
-			barPort := f.AllocPort()
-			barServer := newHTTPServer(barPort, "bar")
-			f.RunServer("", barServer)
-
-			clientConf += fmt.Sprintf(`
-			[foo]
-			type = http
-			local_port = %d
-			custom_domains = example.com
-			group = test
-			group_key = 123
-			health_check_type = http
-			health_check_interval_s = 1
-			health_check_url = /healthz
-
-			[bar]
-			type = http
-			local_port = %d
-			custom_domains = example.com
-			group = test
-			group_key = 123
-			health_check_type = http
-			health_check_interval_s = 1
-			health_check_url = /healthz
-			`, fooPort, barPort)
-
-			f.RunProcesses(serverConf, []string{clientConf})
-
-			// send first HTTP request
-			var contents []string
-			framework.NewRequestExpect(f).Port(vhostPort).
-				RequestModify(func(r *request.Request) {
-					r.HTTP().HTTPHost("example.com")
-				}).
-				Ensure(func(resp *request.Response) bool {
-					contents = append(contents, string(resp.Content))
-					return true
-				})
-
-			// send second HTTP request, should be forwarded to another service
-			framework.NewRequestExpect(f).Port(vhostPort).
-				RequestModify(func(r *request.Request) {
-					r.HTTP().HTTPHost("example.com")
-				}).
-				Ensure(func(resp *request.Response) bool {
-					contents = append(contents, string(resp.Content))
-					return true
-				})
-
-			framework.ExpectContainElements(contents, []string{"foo", "bar"})
-
-			// check foo and bar is ok
-			results := doFooBarHTTPRequest(vhostPort, "example.com")
-			framework.ExpectContainElements(results, []string{"foo", "bar"})
-
-			// close bar server, check foo is ok
-			barServer.Close()
-			time.Sleep(2 * time.Second)
-			results = doFooBarHTTPRequest(vhostPort, "example.com")
-			framework.ExpectContainElements(results, []string{"foo"})
-			framework.ExpectNotContainElements(results, []string{"bar"})
-
-			// resume bar server, check foo and bar is ok
-			f.RunServer("", barServer)
-			time.Sleep(2 * time.Second)
-			results = doFooBarHTTPRequest(vhostPort, "example.com")
-			framework.ExpectContainElements(results, []string{"foo", "bar"})
-		})
 	})
 })

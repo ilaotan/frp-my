@@ -29,31 +29,28 @@ import (
 
 const tomlServerContent = `
 bindAddr = "127.0.0.1"
-kcpBindPort = 7000
-quicBindPort = 7001
-tcpmuxHTTPConnectPort = 7005
-custom404Page = "/abc.html"
+maxPortsPerClient = 7005
+userConnTimeout = 8
+transport.maxPoolCount = 7000
 transport.tcpKeepalive = 10
 `
 
 const yamlServerContent = `
 bindAddr: 127.0.0.1
-kcpBindPort: 7000
-quicBindPort: 7001
-tcpmuxHTTPConnectPort: 7005
-custom404Page: /abc.html
+maxPortsPerClient: 7005
+userConnTimeout: 8
 transport:
+  maxPoolCount: 7000
   tcpKeepalive: 10
 `
 
 const jsonServerContent = `
 {
   "bindAddr": "127.0.0.1",
-  "kcpBindPort": 7000,
-  "quicBindPort": 7001,
-  "tcpmuxHTTPConnectPort": 7005,
-  "custom404Page": "/abc.html",
+  "maxPortsPerClient": 7005,
+  "userConnTimeout": 8,
   "transport": {
+    "maxPoolCount": 7000,
     "tcpKeepalive": 10
   }
 }
@@ -75,10 +72,9 @@ func TestLoadServerConfig(t *testing.T) {
 			err := LoadConfigure([]byte(test.content), &svrCfg, true)
 			require.NoError(err)
 			require.EqualValues("127.0.0.1", svrCfg.BindAddr)
-			require.EqualValues(7000, svrCfg.KCPBindPort)
-			require.EqualValues(7001, svrCfg.QUICBindPort)
-			require.EqualValues(7005, svrCfg.TCPMuxHTTPConnectPort)
-			require.EqualValues("/abc.html", svrCfg.Custom404Page)
+			require.EqualValues(7000, svrCfg.Transport.MaxPoolCount)
+			require.EqualValues(7005, svrCfg.MaxPortsPerClient)
+			require.EqualValues(8, svrCfg.UserConnTimeout)
 			require.EqualValues(10, svrCfg.Transport.TCPKeepAlive)
 		})
 	}
@@ -157,22 +153,6 @@ remotePort = 6000
 	err = LoadConfigure([]byte(proxyStr), &clientCfg, true)
 	require.Error(err)
 
-	visitorStr := `
-serverPort = 7000
-
-[[visitors]]
-name = "test"
-type = "stcp"
-bindPort = 6000
-serverName = "server"
-`
-	err = LoadConfigure([]byte(visitorStr), &clientCfg, true)
-	require.NoError(err)
-
-	visitorStr += `unknown = "unknown"`
-	err = LoadConfigure([]byte(visitorStr), &clientCfg, true)
-	require.Error(err)
-
 	pluginStr := `
 serverPort = 7000
 
@@ -226,8 +206,7 @@ serverAddr: "127.0.0.1"
 serverPort: 7000
 
 .common: &common
-  type: stcp
-  secretKey: "test-secret"
+  type: tcp
   localIP: 127.0.0.1
   transport:
     useEncryption: true
@@ -236,9 +215,11 @@ serverPort: 7000
 proxies:
 - name: ssh
   localPort: 22
+  remotePort: 6000
   <<: *common
 - name: web
   localPort: 80
+  remotePort: 6001
   <<: *common
 `
 
@@ -255,12 +236,12 @@ proxies:
 	// Check first proxy
 	sshProxy := clientCfg.Proxies[0].ProxyConfigurer
 	require.Equal("ssh", sshProxy.GetBaseConfig().Name)
-	require.Equal("stcp", sshProxy.GetBaseConfig().Type)
+	require.Equal("tcp", sshProxy.GetBaseConfig().Type)
 
 	// Check second proxy
 	webProxy := clientCfg.Proxies[1].ProxyConfigurer
 	require.Equal("web", webProxy.GetBaseConfig().Name)
-	require.Equal("stcp", webProxy.GetBaseConfig().Type)
+	require.Equal("tcp", webProxy.GetBaseConfig().Type)
 }
 
 // TestOptimizedYAMLProcessing tests the optimization logic for YAML processing
@@ -270,9 +251,11 @@ func TestOptimizedYAMLProcessing(t *testing.T) {
 	yamlWithDotFields := []byte(`
 serverAddr: "127.0.0.1"
 .common: &common
-  type: stcp
+  type: tcp
 proxies:
 - name: test
+  localPort: 22
+  remotePort: 6000
   <<: *common
 `)
 
@@ -298,7 +281,7 @@ proxies:
 	require.Equal("127.0.0.1", clientCfg.ServerAddr)
 	require.Len(clientCfg.Proxies, 1)
 	require.Equal("test", clientCfg.Proxies[0].ProxyConfigurer.GetBaseConfig().Name)
-	require.Equal("stcp", clientCfg.Proxies[0].ProxyConfigurer.GetBaseConfig().Type)
+	require.Equal("tcp", clientCfg.Proxies[0].ProxyConfigurer.GetBaseConfig().Type)
 }
 
 func TestFilterClientConfigurers_PreserveRawNamesAndNoMutation(t *testing.T) {
@@ -311,35 +294,16 @@ func TestFilterClientConfigurers_PreserveRawNamesAndNoMutation(t *testing.T) {
 	proxyCfg.LocalPort = 10080
 	proxyCfg.Enabled = &enabled
 
-	visitorCfg := &v1.XTCPVisitorConfig{}
-	visitorCfg.Name = "visitor-raw"
-	visitorCfg.Type = "xtcp"
-	visitorCfg.ServerName = "server-raw"
-	visitorCfg.FallbackTo = "fallback-raw"
-	visitorCfg.SecretKey = "secret"
-	visitorCfg.BindPort = 10081
-	visitorCfg.Enabled = &enabled
-
 	common := &v1.ClientCommonConfig{
 		User: "alice",
 	}
 
-	proxies, visitors := FilterClientConfigurers(common, []v1.ProxyConfigurer{proxyCfg}, []v1.VisitorConfigurer{visitorCfg})
+	proxies := FilterClientConfigurers(common, []v1.ProxyConfigurer{proxyCfg})
 	require.Len(proxies, 1)
-	require.Len(visitors, 1)
 
 	p := proxies[0].GetBaseConfig()
 	require.Equal("proxy-raw", p.Name)
 	require.Empty(p.LocalIP)
-
-	v := visitors[0].GetBaseConfig()
-	require.Equal("visitor-raw", v.Name)
-	require.Equal("server-raw", v.ServerName)
-	require.Empty(v.BindAddr)
-
-	xtcp := visitors[0].(*v1.XTCPVisitorConfig)
-	require.Equal("fallback-raw", xtcp.FallbackTo)
-	require.Empty(xtcp.Protocol)
 }
 
 func TestCompleteProxyConfigurers_PreserveRawNames(t *testing.T) {
@@ -360,32 +324,6 @@ func TestCompleteProxyConfigurers_PreserveRawNames(t *testing.T) {
 	require.Equal("127.0.0.1", p.LocalIP)
 }
 
-func TestCompleteVisitorConfigurers_PreserveRawNames(t *testing.T) {
-	require := require.New(t)
-
-	enabled := true
-	visitorCfg := &v1.XTCPVisitorConfig{}
-	visitorCfg.Name = "visitor-raw"
-	visitorCfg.Type = "xtcp"
-	visitorCfg.ServerName = "server-raw"
-	visitorCfg.FallbackTo = "fallback-raw"
-	visitorCfg.SecretKey = "secret"
-	visitorCfg.BindPort = 10081
-	visitorCfg.Enabled = &enabled
-
-	visitors := CompleteVisitorConfigurers([]v1.VisitorConfigurer{visitorCfg})
-	require.Len(visitors, 1)
-
-	v := visitors[0].GetBaseConfig()
-	require.Equal("visitor-raw", v.Name)
-	require.Equal("server-raw", v.ServerName)
-	require.Equal("127.0.0.1", v.BindAddr)
-
-	xtcp := visitors[0].(*v1.XTCPVisitorConfig)
-	require.Equal("fallback-raw", xtcp.FallbackTo)
-	require.Equal("quic", xtcp.Protocol)
-}
-
 func TestCompleteProxyConfigurers_Idempotent(t *testing.T) {
 	require := require.New(t)
 
@@ -403,27 +341,6 @@ func TestCompleteProxyConfigurers_Idempotent(t *testing.T) {
 	require.NoError(err)
 
 	require.Equal(string(firstProxyJSON), string(secondProxyJSON))
-}
-
-func TestCompleteVisitorConfigurers_Idempotent(t *testing.T) {
-	require := require.New(t)
-
-	visitorCfg := &v1.XTCPVisitorConfig{}
-	visitorCfg.Name = "visitor"
-	visitorCfg.Type = "xtcp"
-	visitorCfg.ServerName = "server"
-	visitorCfg.SecretKey = "secret"
-	visitorCfg.BindPort = 10081
-
-	visitors := CompleteVisitorConfigurers([]v1.VisitorConfigurer{visitorCfg})
-	firstVisitorJSON, err := json.Marshal(visitors[0])
-	require.NoError(err)
-
-	visitors = CompleteVisitorConfigurers(visitors)
-	secondVisitorJSON, err := json.Marshal(visitors[0])
-	require.NoError(err)
-
-	require.Equal(string(firstVisitorJSON), string(secondVisitorJSON))
 }
 
 func TestFilterClientConfigurers_FilterByStartAndEnabled(t *testing.T) {
@@ -454,12 +371,11 @@ func TestFilterClientConfigurers_FilterByStartAndEnabled(t *testing.T) {
 		Start: []string{"keep"},
 	}
 
-	proxies, visitors := FilterClientConfigurers(common, []v1.ProxyConfigurer{
+	proxies := FilterClientConfigurers(common, []v1.ProxyConfigurer{
 		proxyKeep,
 		proxyDropByStart,
 		proxyDropByEnabled,
-	}, nil)
-	require.Len(visitors, 0)
+	})
 	require.Len(proxies, 1)
 	require.Equal("keep", proxies[0].GetBaseConfig().Name)
 }
@@ -491,28 +407,6 @@ remotePort = 6001
 			errSubstr: "proxy name [dup] is duplicated",
 		},
 		{
-			name: "duplicate visitor names",
-			content: `
-serverAddr = "127.0.0.1"
-serverPort = 7000
-
-[[visitors]]
-name = "dup"
-type = "stcp"
-serverName = "a"
-secretKey = "secret"
-bindPort = 9001
-
-[[visitors]]
-name = "dup"
-type = "stcp"
-serverName = "b"
-secretKey = "secret"
-bindPort = 9002
-`,
-			errSubstr: "visitor name [dup] is duplicated",
-		},
-		{
 			name: "unique names",
 			content: `
 serverAddr = "127.0.0.1"
@@ -529,26 +423,6 @@ name = "p2"
 type = "tcp"
 localPort = 3306
 remotePort = 6001
-`,
-		},
-		{
-			name: "same name across proxy and visitor",
-			content: `
-serverAddr = "127.0.0.1"
-serverPort = 7000
-
-[[proxies]]
-name = "same"
-type = "tcp"
-localPort = 22
-remotePort = 6000
-
-[[visitors]]
-name = "same"
-type = "stcp"
-serverName = "a"
-secretKey = "secret"
-bindPort = 9001
 `,
 		},
 	}

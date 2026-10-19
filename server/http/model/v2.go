@@ -28,18 +28,12 @@ type V2SystemInfoResp struct {
 }
 
 type V2SystemInfoConfigResp struct {
-	BindPort              int    `json:"bindPort"`
-	VhostHTTPPort         int    `json:"vhostHTTPPort"`
-	VhostHTTPSPort        int    `json:"vhostHTTPSPort"`
-	TCPMuxHTTPConnectPort int    `json:"tcpmuxHTTPConnectPort"`
-	KCPBindPort           int    `json:"kcpBindPort"`
-	QUICBindPort          int    `json:"quicBindPort"`
-	SubdomainHost         string `json:"subdomainHost"`
-	MaxPoolCount          int64  `json:"maxPoolCount"`
-	MaxPortsPerClient     int64  `json:"maxPortsPerClient"`
-	HeartbeatTimeout      int64  `json:"heartbeatTimeout"`
-	AllowPortsStr         string `json:"allowPortsStr"`
-	TLSForce              bool   `json:"tlsForce"`
+	BindPort          int    `json:"bindPort"`
+	MaxPoolCount      int64  `json:"maxPoolCount"`
+	MaxPortsPerClient int64  `json:"maxPortsPerClient"`
+	HeartbeatTimeout  int64  `json:"heartbeatTimeout"`
+	AllowPortsStr     string `json:"allowPortsStr"`
+	TLSForce          bool   `json:"tlsForce"`
 }
 
 type V2SystemInfoStatusResp struct {
@@ -84,14 +78,7 @@ type V2ProxyResp struct {
 type V2ProxySpec struct {
 	Type string `json:"type"`
 
-	TCP    *V2TCPProxySpec    `json:"tcp,omitempty"`
-	UDP    *V2UDPProxySpec    `json:"udp,omitempty"`
-	HTTP   *V2HTTPProxySpec   `json:"http,omitempty"`
-	HTTPS  *V2HTTPSProxySpec  `json:"https,omitempty"`
-	TCPMux *V2TCPMuxProxySpec `json:"tcpmux,omitempty"`
-	STCP   *V2STCPProxySpec   `json:"stcp,omitempty"`
-	SUDP   *V2SUDPProxySpec   `json:"sudp,omitempty"`
-	XTCP   *V2XTCPProxySpec   `json:"xtcp,omitempty"`
+	TCP *V2TCPProxySpec `json:"tcp,omitempty"`
 }
 
 type V2ProxyBaseSpec struct {
@@ -115,45 +102,6 @@ type V2ProxyLoadBalancerSpec struct {
 type V2TCPProxySpec struct {
 	V2ProxyBaseSpec
 	RemotePort *int `json:"remotePort,omitempty"`
-}
-
-type V2UDPProxySpec struct {
-	V2ProxyBaseSpec
-	RemotePort *int `json:"remotePort,omitempty"`
-}
-
-type V2HTTPProxySpec struct {
-	V2ProxyBaseSpec
-	CustomDomains     []string `json:"customDomains,omitempty"`
-	Subdomain         string   `json:"subdomain,omitempty"`
-	Locations         []string `json:"locations,omitempty"`
-	HostHeaderRewrite string   `json:"hostHeaderRewrite,omitempty"`
-}
-
-type V2HTTPSProxySpec struct {
-	V2ProxyBaseSpec
-	CustomDomains []string `json:"customDomains,omitempty"`
-	Subdomain     string   `json:"subdomain,omitempty"`
-}
-
-type V2TCPMuxProxySpec struct {
-	V2ProxyBaseSpec
-	CustomDomains   []string `json:"customDomains,omitempty"`
-	Subdomain       string   `json:"subdomain,omitempty"`
-	Multiplexer     string   `json:"multiplexer,omitempty"`
-	RouteByHTTPUser string   `json:"routeByHTTPUser,omitempty"`
-}
-
-type V2STCPProxySpec struct {
-	V2ProxyBaseSpec
-}
-
-type V2SUDPProxySpec struct {
-	V2ProxyBaseSpec
-}
-
-type V2XTCPProxySpec struct {
-	V2ProxyBaseSpec
 }
 
 type V2ProxyStatusResp struct {

@@ -11,9 +11,6 @@ user = "your_name"
 serverAddr = "0.0.0.0"
 serverPort = 7000
 
-# STUN server to help penetrate NAT hole.
-# natHoleStunServer = "stun.easyvoip.com:3478"
-
 # Decide if exit program when first login failed, otherwise continuous relogin to frps
 # default is true
 loginFailExit = true
@@ -39,39 +36,13 @@ auth.token = "12345678"
 # auth.tokenSource.type = "file"
 # auth.tokenSource.file.path = "/etc/frp/token"
 
-# oidc.clientID specifies the client ID to use to get a token in OIDC authentication.
-# auth.oidc.clientID = ""
-# oidc.clientSecret specifies the client secret to use to get a token in OIDC authentication.
-# auth.oidc.clientSecret = ""
-# oidc.audience specifies the audience of the token in OIDC authentication.
-# auth.oidc.audience = ""
-# oidc.scope specifies the permissions of the token in OIDC authentication if AuthenticationMethod == "oidc". By default, this value is "".
-# auth.oidc.scope = ""
-# oidc.tokenEndpointURL specifies the URL which implements OIDC Token Endpoint.
-# It will be used to get an OIDC token.
-# auth.oidc.tokenEndpointURL = ""
-
-# oidc.additionalEndpointParams specifies additional parameters to be sent to the OIDC Token Endpoint.
 # For example, if you want to specify the "audience" parameter, you can set as follow.
 # frp will add "audience=<value>" "var1=<value>" to the additional parameters.
-# auth.oidc.additionalEndpointParams.audience = "https://dev.auth.com/api/v2/"
-# auth.oidc.additionalEndpointParams.var1 = "foobar"
 
-# OIDC TLS and proxy configuration
-# Specify a custom CA certificate file for verifying the OIDC token endpoint's TLS certificate.
-# This is useful when the OIDC provider uses a self-signed certificate or a custom CA.
-# auth.oidc.trustedCaFile = "/path/to/ca.crt"
-
-# Skip TLS certificate verification for the OIDC token endpoint.
 # INSECURE: Only use this for debugging purposes, not recommended for production.
-# auth.oidc.insecureSkipVerify = false
 
-# Specify a proxy server for OIDC token endpoint connections.
 # Supports http, https, socks5, and socks5h proxy protocols.
-# If not specified, no proxy is used for OIDC connections.
-# auth.oidc.proxyURL = "http://proxy.example.com:8080"
 
-# Set admin address for control frpc's action by http api such as reload
 webServer.addr = "127.0.0.1"
 webServer.port = 7400
 webServer.user = "admin"
@@ -100,7 +71,7 @@ transport.poolCount = 5
 # transport.tcpMuxKeepaliveInterval = 30
 
 # Communication protocol used to connect to server
-# supports tcp, kcp, quic, websocket and wss now, default is tcp
+
 transport.protocol = "tcp"
 
 # FRP wire protocol used inside the selected transport.
@@ -116,11 +87,6 @@ transport.connectServerLocalIP = "0.0.0.0"
 # transport.proxyURL = "http://user:passwd@192.168.1.128:8080"
 # transport.proxyURL = "socks5://user:passwd@192.168.1.128:1080"
 # transport.proxyURL = "ntlm://user:passwd@192.168.1.128:2080"
-
-# quic protocol options
-# transport.quic.keepalivePeriod = 10
-# transport.quic.maxIdleTimeout = 30
-# transport.quic.maxIncomingStreams = 100000
 
 # If tls.enable is true, frpc will connect frps by tls.
 # Since v0.50.0, the default value has been changed to true, and tls is enabled by default.
@@ -162,20 +128,6 @@ transport.tls.enable = true
 # Set 'enabled = false' in a proxy configuration to disable it.
 # If 'enabled' is not set or set to true, the proxy is enabled by default.
 # The 'enabled' field provides more granular control and is recommended over 'start'.
-
-# Specify udp packet size, unit is byte. If not set, the default value is 1500.
-# This parameter should be same between client and server.
-# It affects the udp and sudp proxy.
-udpPacketSize = 1500
-
-# Feature gates allows you to enable or disable experimental features
-# Format is a map of feature names to boolean values
-# You can enable specific features:
-#featureGates = { VirtualNet = true }
-
-# VirtualNet settings for experimental virtual network capabilities
-# The virtual network feature requires enabling the VirtualNet feature gate above
-# virtualNet.address = "100.86.1.1/24"
 
 # Additional metadatas for client.
 metadatas.var1 = "abc"
@@ -234,44 +186,12 @@ localPort = 22
 remotePort = 0
 
 [[proxies]]
-name = "dns"
-type = "udp"
-localIP = "114.114.114.114"
-localPort = 53
-remotePort = 6002
-
-# Resolve your domain names to [serverAddr] so you can use http://web01.yourdomain.com to browse web01 and http://web02.yourdomain.com to browse web02
-[[proxies]]
-name = "web01"
-type = "http"
+name = "web_health_check"
+type = "tcp"
 localIP = "127.0.0.1"
 localPort = 80
-# http username and password are safety certification for http protocol
-# if not set, you can access this customDomains without certification
-httpUser = "admin"
-httpPassword = "admin"
-# By default the credentials above are read from the Authorization header
-# (Proxy-Authorization for proxy-mode requests). Set httpAuthHeader to use a
-# custom header instead, which leaves Authorization free for the local service.
-# When httpAuthHeader is set, frps serves a login page for browsers and keeps the
-# session in a signed cookie. By default the page lives at /.auth/login and
-# /.auth/logout; those paths are reserved and no longer reach the local service.
-# Use httpAuthPagePath to move them somewhere less guessable or collision free.
-# httpAuthHeader = "X-FRP-Auth"
-# httpAuthPagePath = "/_o7k2/entry"
-# Only allow requests from these client IPs. Entries can be single IPs or CIDR
-# blocks. If not set, every client is allowed. Only available for http type.
-# allowIPs = ["192.168.1.0/24", "203.0.113.7"]
-# if domain for frps is frps.com, then you can access [web01] proxy by URL http://web01.frps.com
-subdomain = "web01"
-customDomains = ["web01.yourdomain.com"]
-# locations is only available for http type
-locations = ["/", "/pic"]
-# route requests to this service if http basic auto user is abc
-# routeByHTTPUser = abc
-hostHeaderRewrite = "example.com"
-requestHeaders.set.x-from-where = "frp"
-responseHeaders.set.foo = "bar"
+remotePort = 6002
+# health check also supports 'http' for local http services
 healthCheck.type = "http"
 # frpc will send a GET http request '/status' to local http service
 # http service is alive when it return 2xx http response code
@@ -284,27 +204,9 @@ healthCheck.httpHeaders=[
     { name = "x-from-where", value = "frp" }
 ]
 
-[[proxies]]
-name = "web02"
-type = "https"
-# Disable this proxy by setting enabled to false
-# enabled = false
-localIP = "127.0.0.1"
-localPort = 8000
-subdomain = "web02"
-customDomains = ["web02.yourdomain.com"]
 # if not empty, frpc will use proxy protocol to transfer connection info to your local service
 # v1 or v2 or empty
-transport.proxyProtocolVersion = "v2"
-
-[[proxies]]
-name = "tcpmuxhttpconnect"
-type = "tcpmux"
-multiplexer = "httpconnect"
-localIP = "127.0.0.1"
-localPort = 10701
-customDomains = ["tunnel1"]
-# routeByHTTPUser = "user1"
+# transport.proxyProtocolVersion = "v2"
 
 [[proxies]]
 name = "plugin_unix_domain_socket"
@@ -347,8 +249,8 @@ httpPassword = "abc"
 
 [[proxies]]
 name = "plugin_https2http"
-type = "https"
-customDomains = ["test.yourdomain.com"]
+type = "tcp"
+remotePort = 6007
 [proxies.plugin]
 type = "https2http"
 localAddr = "127.0.0.1:80"
@@ -359,8 +261,8 @@ requestHeaders.set.x-from-where = "frp"
 
 [[proxies]]
 name = "plugin_https2https"
-type = "https"
-customDomains = ["test.yourdomain.com"]
+type = "tcp"
+remotePort = 6008
 [proxies.plugin]
 type = "https2https"
 localAddr = "127.0.0.1:443"
@@ -371,8 +273,8 @@ requestHeaders.set.x-from-where = "frp"
 
 [[proxies]]
 name = "plugin_http2https"
-type = "http"
-customDomains = ["test.yourdomain.com"]
+type = "tcp"
+remotePort = 6009
 [proxies.plugin]
 type = "http2https"
 localAddr = "127.0.0.1:443"
@@ -382,7 +284,7 @@ requestHeaders.set.x-from-where = "frp"
 [[proxies]]
 name = "plugin_http2http"
 type = "tcp"
-remotePort = 6007
+remotePort = 6010
 [proxies.plugin]
 type = "http2http"
 localAddr = "127.0.0.1:80"
@@ -392,96 +294,9 @@ requestHeaders.set.x-from-where = "frp"
 [[proxies]]
 name = "plugin_tls2raw"
 type = "tcp"
-remotePort = 6008
+remotePort = 6011
 [proxies.plugin]
 type = "tls2raw"
 localAddr = "127.0.0.1:80"
 crtPath = "./server.crt"
 keyPath = "./server.key"
-
-[[proxies]]
-name = "secret_tcp"
-# If the type is secret tcp, remotePort is useless
-# Who want to connect local port should deploy another frpc with stcp proxy and role is visitor
-type = "stcp"
-# secretKey is used for authentication for visitors
-secretKey = "abcdefg"
-localIP = "127.0.0.1"
-localPort = 22
-# If not empty, only visitors from specified users can connect.
-# Otherwise, visitors from same user can connect. '*' means allow all users.
-allowUsers = ["*"]
-
-[[proxies]]
-name = "p2p_tcp"
-type = "xtcp"
-secretKey = "abcdefg"
-localIP = "127.0.0.1"
-localPort = 22
-# If not empty, only visitors from specified users can connect.
-# Otherwise, visitors from same user can connect. '*' means allow all users.
-allowUsers = ["user1", "user2"]
-
-# NAT traversal configuration (optional)
-[proxies.natTraversal]
-# Disable the use of local network interfaces (assisted addresses) for NAT traversal.
-# When enabled, only STUN-discovered public addresses will be used.
-# This can improve performance when you have slow VPN connections.
-# Default: false
-disableAssistedAddrs = false
-
-[[proxies]]
-name = "vnet-server"
-type = "stcp"
-secretKey = "your-secret-key"
-[proxies.plugin]
-type = "virtual_net"
-
-# frpc role visitor -> frps -> frpc role server
-[[visitors]]
-name = "secret_tcp_visitor"
-type = "stcp"
-# the server name you want to visitor
-serverName = "secret_tcp"
-secretKey = "abcdefg"
-# connect this address to visitor stcp server
-bindAddr = "127.0.0.1"
-# bindPort can be less than 0, it means don't bind to the port and only receive connections redirected from
-# other visitors. (This is not supported for SUDP now)
-bindPort = 9000
-
-[[visitors]]
-name = "p2p_tcp_visitor"
-type = "xtcp"
-# if the server user is not set, it defaults to the current user
-serverUser = "user1"
-serverName = "p2p_tcp"
-secretKey = "abcdefg"
-bindAddr = "127.0.0.1"
-# bindPort can be less than 0, it means don't bind to the port and only receive connections redirected from
-# other visitors. (This is not supported for SUDP now)
-bindPort = 9001
-# when automatic tunnel persistence is required, set it to true
-keepTunnelOpen = false
-# effective when keepTunnelOpen is set to true, the number of attempts to punch through per hour
-maxRetriesAnHour = 8
-minRetryInterval = 90
-# fallbackTo = "stcp_visitor"
-# fallbackTimeoutMs = 500
-
-# NAT traversal configuration (optional)
-[visitors.natTraversal]
-# Disable the use of local network interfaces (assisted addresses) for NAT traversal.
-# When enabled, only STUN-discovered public addresses will be used.
-# Default: false
-disableAssistedAddrs = false
-
-[[visitors]]
-name = "vnet-visitor"
-type = "stcp"
-serverName = "vnet-server"
-secretKey = "your-secret-key"
-bindPort = -1
-[visitors.plugin]
-type = "virtual_net"
-destinationIP = "100.86.0.1"

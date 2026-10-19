@@ -64,19 +64,13 @@ func (c *Controller) APIServerInfo(ctx *httppkg.Context) (any, error) {
 func (c *Controller) buildServerInfoResp() model.ServerInfoResp {
 	serverStats := mem.StatsCollector.GetServer()
 	return model.ServerInfoResp{
-		Version:               version.Full(),
-		BindPort:              c.serverCfg.BindPort,
-		VhostHTTPPort:         c.serverCfg.VhostHTTPPort,
-		VhostHTTPSPort:        c.serverCfg.VhostHTTPSPort,
-		TCPMuxHTTPConnectPort: c.serverCfg.TCPMuxHTTPConnectPort,
-		KCPBindPort:           c.serverCfg.KCPBindPort,
-		QUICBindPort:          c.serverCfg.QUICBindPort,
-		SubdomainHost:         c.serverCfg.SubDomainHost,
-		MaxPoolCount:          c.serverCfg.Transport.MaxPoolCount,
-		MaxPortsPerClient:     c.serverCfg.MaxPortsPerClient,
-		HeartBeatTimeout:      c.serverCfg.Transport.HeartbeatTimeout,
-		AllowPortsStr:         types.PortsRangeSlice(c.serverCfg.AllowPorts).String(),
-		TLSForce:              c.serverCfg.Transport.TLS.Force,
+		Version:           version.Full(),
+		BindPort:          c.serverCfg.BindPort,
+		MaxPoolCount:      c.serverCfg.Transport.MaxPoolCount,
+		MaxPortsPerClient: c.serverCfg.MaxPortsPerClient,
+		HeartBeatTimeout:  c.serverCfg.Transport.HeartbeatTimeout,
+		AllowPortsStr:     types.PortsRangeSlice(c.serverCfg.AllowPorts).String(),
+		TLSForce:          c.serverCfg.Transport.TLS.Force,
 
 		TotalTrafficIn:  serverStats.TotalTrafficIn,
 		TotalTrafficOut: serverStats.TotalTrafficOut,
@@ -328,31 +322,6 @@ func getConfFromConfigurer(cfg v1.ProxyConfigurer) any {
 	switch c := cfg.(type) {
 	case *v1.TCPProxyConfig:
 		return &model.TCPOutConf{BaseOutConf: outBase, RemotePort: c.RemotePort}
-	case *v1.UDPProxyConfig:
-		return &model.UDPOutConf{BaseOutConf: outBase, RemotePort: c.RemotePort}
-	case *v1.HTTPProxyConfig:
-		return &model.HTTPOutConf{
-			BaseOutConf:       outBase,
-			DomainConfig:      c.DomainConfig,
-			Locations:         c.Locations,
-			HostHeaderRewrite: c.HostHeaderRewrite,
-		}
-	case *v1.HTTPSProxyConfig:
-		return &model.HTTPSOutConf{
-			BaseOutConf:  outBase,
-			DomainConfig: c.DomainConfig,
-		}
-	case *v1.TCPMuxProxyConfig:
-		return &model.TCPMuxOutConf{
-			BaseOutConf:     outBase,
-			DomainConfig:    c.DomainConfig,
-			Multiplexer:     c.Multiplexer,
-			RouteByHTTPUser: c.RouteByHTTPUser,
-		}
-	case *v1.STCPProxyConfig:
-		return &model.STCPOutConf{BaseOutConf: outBase}
-	case *v1.XTCPProxyConfig:
-		return &model.XTCPOutConf{BaseOutConf: outBase}
 	}
 	return outBase
 }

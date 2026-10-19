@@ -21,25 +21,23 @@ import (
 )
 
 // baseSource provides shared state and behavior for Source implementations.
-// It manages proxy/visitor storage.
+// It manages proxy storage.
 // Concrete types (ConfigSource, StoreSource) embed this struct.
 type baseSource struct {
 	mu sync.RWMutex
 
-	proxies  map[string]v1.ProxyConfigurer
-	visitors map[string]v1.VisitorConfigurer
+	proxies map[string]v1.ProxyConfigurer
 }
 
 func newBaseSource() baseSource {
 	return baseSource{
-		proxies:  make(map[string]v1.ProxyConfigurer),
-		visitors: make(map[string]v1.VisitorConfigurer),
+		proxies: make(map[string]v1.ProxyConfigurer),
 	}
 }
 
-// Load returns all enabled proxy and visitor configurations.
+// Load returns all enabled proxy configurations.
 // Configurations with Enabled explicitly set to false are filtered out.
-func (s *baseSource) Load() ([]v1.ProxyConfigurer, []v1.VisitorConfigurer, error) {
+func (s *baseSource) Load() ([]v1.ProxyConfigurer, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -52,14 +50,5 @@ func (s *baseSource) Load() ([]v1.ProxyConfigurer, []v1.VisitorConfigurer, error
 		proxies = append(proxies, p)
 	}
 
-	visitors := make([]v1.VisitorConfigurer, 0, len(s.visitors))
-	for _, v := range s.visitors {
-		// Filter out disabled visitors (nil or true means enabled)
-		if enabled := v.GetBaseConfig().Enabled; enabled != nil && !*enabled {
-			continue
-		}
-		visitors = append(visitors, v)
-	}
-
-	return cloneConfigurers(proxies, visitors)
+	return cloneConfigurers(proxies)
 }

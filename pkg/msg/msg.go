@@ -14,62 +14,32 @@
 
 package msg
 
-import (
-	"net"
-	"reflect"
-)
+import ()
 
 const (
-	TypeLogin              byte = 'o'
-	TypeLoginResp          byte = '1'
-	TypeNewProxy           byte = 'p'
-	TypeNewProxyResp       byte = '2'
-	TypeCloseProxy         byte = 'c'
-	TypeNewWorkConn        byte = 'w'
-	TypeReqWorkConn        byte = 'r'
-	TypeStartWorkConn      byte = 's'
-	TypeNewVisitorConn     byte = 'v'
-	TypeNewVisitorConnResp byte = '3'
-	TypePing               byte = 'h'
-	TypePong               byte = '4'
-	TypeUDPPacket          byte = 'u'
-	TypeNatHoleVisitor     byte = 'i'
-	TypeNatHoleClient      byte = 'n'
-	TypeNatHoleResp        byte = 'm'
-	TypeNatHoleSid         byte = '5'
-	TypeNatHoleReport      byte = '6'
+	TypeLogin         byte = 'o'
+	TypeLoginResp     byte = '1'
+	TypeNewProxy      byte = 'p'
+	TypeNewProxyResp  byte = '2'
+	TypeCloseProxy    byte = 'c'
+	TypeNewWorkConn   byte = 'w'
+	TypeReqWorkConn   byte = 'r'
+	TypeStartWorkConn byte = 's'
+	TypePing          byte = 'h'
+	TypePong          byte = '4'
 )
 
 var msgTypeMap = map[byte]any{
-	TypeLogin:              Login{},
-	TypeLoginResp:          LoginResp{},
-	TypeNewProxy:           NewProxy{},
-	TypeNewProxyResp:       NewProxyResp{},
-	TypeCloseProxy:         CloseProxy{},
-	TypeNewWorkConn:        NewWorkConn{},
-	TypeReqWorkConn:        ReqWorkConn{},
-	TypeStartWorkConn:      StartWorkConn{},
-	TypeNewVisitorConn:     NewVisitorConn{},
-	TypeNewVisitorConnResp: NewVisitorConnResp{},
-	TypePing:               Ping{},
-	TypePong:               Pong{},
-	TypeUDPPacket:          UDPPacket{},
-	TypeNatHoleVisitor:     NatHoleVisitor{},
-	TypeNatHoleClient:      NatHoleClient{},
-	TypeNatHoleResp:        NatHoleResp{},
-	TypeNatHoleSid:         NatHoleSid{},
-	TypeNatHoleReport:      NatHoleReport{},
-}
-
-var TypeNameNatHoleResp = reflect.TypeFor[NatHoleResp]().Name()
-
-type ClientSpec struct {
-	// Due to the support of VirtualClient, frps needs to know the client type in order to
-	// differentiate the processing logic.
-	// Optional values: ssh-tunnel
-	Type string `json:"type,omitempty"`
-	// If the value is true, the client will not require authentication.
-	AlwaysAuthPass bool `json:"always_auth_pass,omitempty"`
+	TypeLogin:         Login{},
+	TypeLoginResp:     LoginResp{},
+	TypeNewProxy:      NewProxy{},
+	TypeNewProxyResp:  NewProxyResp{},
+	TypeCloseProxy:    CloseProxy{},
+	TypeNewWorkConn:   NewWorkConn{},
+	TypeReqWorkConn:   ReqWorkConn{},
+	TypeStartWorkConn: StartWorkConn{},
+	TypePing:          Ping{},
+	TypePong:          Pong{},
 }
 
 // When frpc start, client send this message to login to server.
@@ -84,9 +54,6 @@ type Login struct {
 	RunID        string            `json:"run_id,omitempty"`
 	ClientID     string            `json:"client_id,omitempty"`
 	Metas        map[string]string `json:"metas,omitempty"`
-
-	// Currently only effective for VirtualClient.
-	ClientSpec ClientSpec `json:"client_spec,omitempty"`
 
 	// Some global configures.
 	PoolCount int `json:"pool_count,omitempty"`
@@ -111,32 +78,8 @@ type NewProxy struct {
 	Metas              map[string]string `json:"metas,omitempty"`
 	Annotations        map[string]string `json:"annotations,omitempty"`
 
-	// tcp and udp only
+	// tcp only
 	RemotePort int `json:"remote_port,omitempty"`
-
-	// http and https only
-	CustomDomains     []string          `json:"custom_domains,omitempty"`
-	SubDomain         string            `json:"subdomain,omitempty"`
-	Locations         []string          `json:"locations,omitempty"`
-	HTTPUser          string            `json:"http_user,omitempty"`
-	HTTPPwd           string            `json:"http_pwd,omitempty"`
-	HostHeaderRewrite string            `json:"host_header_rewrite,omitempty"`
-	Headers           map[string]string `json:"headers,omitempty"`
-	ResponseHeaders   map[string]string `json:"response_headers,omitempty"`
-	RouteByHTTPUser   string            `json:"route_by_http_user,omitempty"`
-	// AllowIPs restricts which client IPs can access this http proxy (http only).
-	AllowIPs []string `json:"allow_ips,omitempty"`
-	// HTTPAuthHeader overrides the header carrying http_user/http_pwd (http only).
-	HTTPAuthHeader string `json:"http_auth_header,omitempty"`
-	// HTTPAuthPagePath overrides the base path of the frps login page (http only).
-	HTTPAuthPagePath string `json:"http_auth_page_path,omitempty"`
-
-	// stcp, sudp, xtcp
-	Sk         string   `json:"sk,omitempty"`
-	AllowUsers []string `json:"allow_users,omitempty"`
-
-	// tcpmux
-	Multiplexer string `json:"multiplexer,omitempty"`
 }
 
 type NewProxyResp struct {
@@ -166,20 +109,6 @@ type StartWorkConn struct {
 	Error     string `json:"error,omitempty"`
 }
 
-type NewVisitorConn struct {
-	RunID          string `json:"run_id,omitempty"`
-	ProxyName      string `json:"proxy_name,omitempty"`
-	SignKey        string `json:"sign_key,omitempty"`
-	Timestamp      int64  `json:"timestamp,omitempty"`
-	UseEncryption  bool   `json:"use_encryption,omitempty"`
-	UseCompression bool   `json:"use_compression,omitempty"`
-}
-
-type NewVisitorConnResp struct {
-	ProxyName string `json:"proxy_name,omitempty"`
-	Error     string `json:"error,omitempty"`
-}
-
 type Ping struct {
 	PrivilegeKey string `json:"privilege_key,omitempty"`
 	Timestamp    int64  `json:"timestamp,omitempty"`
@@ -187,67 +116,4 @@ type Ping struct {
 
 type Pong struct {
 	Error string `json:"error,omitempty"`
-}
-
-type UDPPacket struct {
-	Content    []byte       `json:"c,omitempty"`
-	LocalAddr  *net.UDPAddr `json:"l,omitempty"`
-	RemoteAddr *net.UDPAddr `json:"r,omitempty"`
-}
-
-type NatHoleVisitor struct {
-	TransactionID string   `json:"transaction_id,omitempty"`
-	ProxyName     string   `json:"proxy_name,omitempty"`
-	PreCheck      bool     `json:"pre_check,omitempty"`
-	Protocol      string   `json:"protocol,omitempty"`
-	SignKey       string   `json:"sign_key,omitempty"`
-	Timestamp     int64    `json:"timestamp,omitempty"`
-	MappedAddrs   []string `json:"mapped_addrs,omitempty"`
-	AssistedAddrs []string `json:"assisted_addrs,omitempty"`
-}
-
-type NatHoleClient struct {
-	TransactionID string   `json:"transaction_id,omitempty"`
-	ProxyName     string   `json:"proxy_name,omitempty"`
-	Sid           string   `json:"sid,omitempty"`
-	MappedAddrs   []string `json:"mapped_addrs,omitempty"`
-	AssistedAddrs []string `json:"assisted_addrs,omitempty"`
-}
-
-type PortsRange struct {
-	From int `json:"from,omitempty"`
-	To   int `json:"to,omitempty"`
-}
-
-type NatHoleDetectBehavior struct {
-	Role              string       `json:"role,omitempty"` // sender or receiver
-	Mode              int          `json:"mode,omitempty"` // 0, 1, 2...
-	TTL               int          `json:"ttl,omitempty"`
-	SendDelayMs       int          `json:"send_delay_ms,omitempty"`
-	ReadTimeoutMs     int          `json:"read_timeout,omitempty"`
-	CandidatePorts    []PortsRange `json:"candidate_ports,omitempty"`
-	SendRandomPorts   int          `json:"send_random_ports,omitempty"`
-	ListenRandomPorts int          `json:"listen_random_ports,omitempty"`
-}
-
-type NatHoleResp struct {
-	TransactionID  string                `json:"transaction_id,omitempty"`
-	Sid            string                `json:"sid,omitempty"`
-	Protocol       string                `json:"protocol,omitempty"`
-	CandidateAddrs []string              `json:"candidate_addrs,omitempty"`
-	AssistedAddrs  []string              `json:"assisted_addrs,omitempty"`
-	DetectBehavior NatHoleDetectBehavior `json:"detect_behavior,omitempty"`
-	Error          string                `json:"error,omitempty"`
-}
-
-type NatHoleSid struct {
-	TransactionID string `json:"transaction_id,omitempty"`
-	Sid           string `json:"sid,omitempty"`
-	Response      bool   `json:"response,omitempty"`
-	Nonce         string `json:"nonce,omitempty"`
-}
-
-type NatHoleReport struct {
-	Sid     string `json:"sid,omitempty"`
-	Success bool   `json:"success,omitempty"`
 }

@@ -12,14 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onsi/ginkgo/v2"
-	"github.com/onsi/gomega"
-
 	"github.com/fatedier/frp/pkg/util/log"
 	"github.com/fatedier/frp/test/e2e/framework"
 	"github.com/fatedier/frp/test/e2e/framework/consts"
 	"github.com/fatedier/frp/test/e2e/pkg/port"
 	"github.com/fatedier/frp/test/e2e/pkg/process"
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 )
 
 type compatTestContext struct {
@@ -285,11 +284,11 @@ log.level = "trace"
 %s
 
 [[proxies]]
-name = "udp"
-type = "udp"
+name = "tcp"
+type = "tcp"
 localPort = {{ .%s }}
 remotePort = {{ .%s }}
-`, consts.PortServerName, extra, framework.UDPEchoServerPort, remotePortName)
+`, consts.PortServerName, extra, framework.TCPEchoServerPort, remotePortName)
 }
 
 func expectProcessExit(p *process.Process, timeout time.Duration) {

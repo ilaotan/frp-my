@@ -23,7 +23,6 @@ import (
 
 	v1 "github.com/fatedier/frp/pkg/config/v1"
 	"github.com/fatedier/frp/pkg/msg"
-	"github.com/fatedier/frp/pkg/proto/wire"
 )
 
 func TestWorkConnStartWritesStartWorkConn(t *testing.T) {
@@ -55,23 +54,15 @@ func TestWorkConnStartWritesStartWorkConn(t *testing.T) {
 	require.Same(t, serverMsgConn, result.conn)
 }
 
-func TestGetWorkConnFromPoolStartWorkConnUnchangedForUDPWireV2(t *testing.T) {
-	startMsg := getStartWorkConnFromPool(t, &v1.UDPProxyConfig{
-		ProxyBaseConfig: v1.ProxyBaseConfig{Name: "udp", Type: string(v1.ProxyTypeUDP)},
-	}, wire.ProtocolV2)
-
-	require.Equal(t, msg.StartWorkConn{ProxyName: "udp"}, startMsg)
-}
-
 func TestGetWorkConnFromPoolLeavesRawTCPPayloadUnframed(t *testing.T) {
 	startMsg := getStartWorkConnFromPool(t, &v1.TCPProxyConfig{
 		ProxyBaseConfig: v1.ProxyBaseConfig{Name: "tcp", Type: string(v1.ProxyTypeTCP)},
-	}, wire.ProtocolV2)
+	})
 
 	require.Equal(t, msg.StartWorkConn{ProxyName: "tcp"}, startMsg)
 }
 
-func getStartWorkConnFromPool(t *testing.T, cfg v1.ProxyConfigurer, wireProtocol string) msg.StartWorkConn {
+func getStartWorkConnFromPool(t *testing.T, cfg v1.ProxyConfigurer) msg.StartWorkConn {
 	t.Helper()
 
 	client, server := net.Pipe()
@@ -83,11 +74,10 @@ func getStartWorkConnFromPool(t *testing.T, cfg v1.ProxyConfigurer, wireProtocol
 	serverMsgConn := msg.NewConn(server, msg.NewV2ReadWriter(server))
 	clientMsgConn := msg.NewConn(client, msg.NewV2ReadWriter(client))
 	pxy := &BaseProxy{
-		name:         cfg.GetBaseConfig().Name,
-		configurer:   cfg,
-		poolCount:    0,
-		ctx:          context.Background(),
-		wireProtocol: wireProtocol,
+		name:       cfg.GetBaseConfig().Name,
+		configurer: cfg,
+		poolCount:  0,
+		ctx:        context.Background(),
 		getWorkConnFn: func() (*WorkConn, error) {
 			return NewWorkConn(serverMsgConn), nil
 		},

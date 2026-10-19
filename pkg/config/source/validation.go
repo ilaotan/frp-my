@@ -30,14 +30,3 @@ func validateProxyName(proxy v1.ProxyConfigurer) (string, error) {
 	}
 	return name, nil
 }
-
-func validateVisitorName(visitor v1.VisitorConfigurer) (string, error) {
-	if visitor == nil {
-		return "", fmt.Errorf("visitor cannot be nil")
-	}
-	name := visitor.GetBaseConfig().Name
-	if name == "" {
-		return "", fmt.Errorf("visitor name cannot be empty")
-	}
-	return name, nil
-}

@@ -153,7 +153,7 @@ func (f *Framework) GenerateConfigFile(content string) string {
 // then waits for each proxy's "start proxy success" log in the process output.
 // Returns true only if proxies were expected and all registered successfully.
 func waitForClientProxyReady(configPath string, p *process.Process, timeout time.Duration) bool {
-	_, proxyCfgs, _, _, err := config.LoadClientConfig(configPath, false)
+	_, proxyCfgs, _, err := config.LoadClientConfig(configPath, false)
 	if err != nil || len(proxyCfgs) == 0 {
 		return false
 	}

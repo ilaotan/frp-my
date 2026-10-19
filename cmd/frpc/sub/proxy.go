@@ -17,7 +17,6 @@ package sub
 import (
 	"fmt"
 	"os"
-	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -30,19 +29,6 @@ import (
 
 var proxyTypes = []v1.ProxyType{
 	v1.ProxyTypeTCP,
-	v1.ProxyTypeUDP,
-	v1.ProxyTypeTCPMUX,
-	v1.ProxyTypeHTTP,
-	v1.ProxyTypeHTTPS,
-	v1.ProxyTypeSTCP,
-	v1.ProxyTypeSUDP,
-	v1.ProxyTypeXTCP,
-}
-
-var visitorTypes = []v1.VisitorType{
-	v1.VisitorTypeSTCP,
-	v1.VisitorTypeSUDP,
-	v1.VisitorTypeXTCP,
 }
 
 func init() {
@@ -55,17 +41,6 @@ func init() {
 		cmd := NewProxyCommand(string(typ), c, &clientCfg)
 		config.RegisterClientCommonConfigFlags(cmd, &clientCfg)
 		config.RegisterProxyFlags(cmd, c)
-
-		// add sub command for visitor
-		if slices.Contains(visitorTypes, v1.VisitorType(typ)) {
-			vc := v1.NewVisitorConfigurerByType(v1.VisitorType(typ))
-			if vc == nil {
-				panic("visitor type: " + typ + " not support")
-			}
-			visitorCmd := NewVisitorCommand(string(typ), vc, &clientCfg)
-			config.RegisterVisitorFlags(visitorCmd, vc)
-			cmd.AddCommand(visitorCmd)
-		}
 		rootCmd.AddCommand(cmd)
 	}
 }
@@ -94,39 +69,7 @@ func NewProxyCommand(name string, c v1.ProxyConfigurer, clientCfg *v1.ClientComm
 				fmt.Println(err)
 				os.Exit(1)
 			}
-			err := startService(clientCfg, []v1.ProxyConfigurer{proxyCfg}, nil, unsafeFeatures, "")
-			if err != nil {
-				fmt.Println(err)
-				os.Exit(1)
-			}
-		},
-	}
-}
-
-func NewVisitorCommand(name string, c v1.VisitorConfigurer, clientCfg *v1.ClientCommonConfig) *cobra.Command {
-	return &cobra.Command{
-		Use:   "visitor",
-		Short: fmt.Sprintf("Run frpc with a single %s visitor", name),
-		Run: func(cmd *cobra.Command, args []string) {
-			if err := clientCfg.Complete(); err != nil {
-				fmt.Println(err)
-				os.Exit(1)
-			}
-			unsafeFeatures := security.NewUnsafeFeatures(allowUnsafe)
-			validator := validation.NewConfigValidator(unsafeFeatures)
-			if _, err := validator.ValidateClientCommonConfig(clientCfg); err != nil {
-				fmt.Println(err)
-				os.Exit(1)
-			}
-
-			c.GetBaseConfig().Type = name
-			c.Complete()
-			visitorCfg := c
-			if err := validation.ValidateVisitorConfigurer(visitorCfg); err != nil {
-				fmt.Println(err)
-				os.Exit(1)
-			}
-			err := startService(clientCfg, nil, []v1.VisitorConfigurer{visitorCfg}, unsafeFeatures, "")
+			err := startService(clientCfg, []v1.ProxyConfigurer{proxyCfg}, unsafeFeatures, "")
 			if err != nil {
 				fmt.Println(err)
 				os.Exit(1)
@@ -138,12 +81,11 @@ func NewVisitorCommand(name string, c v1.VisitorConfigurer, clientCfg *v1.Client
 func startService(
 	cfg *v1.ClientCommonConfig,
 	proxyCfgs []v1.ProxyConfigurer,
-	visitorCfgs []v1.VisitorConfigurer,
 	unsafeFeatures *security.UnsafeFeatures,
 	cfgFile string,
 ) error {
 	configSource := source.NewConfigSource()
-	if err := configSource.ReplaceAll(proxyCfgs, visitorCfgs); err != nil {
+	if err := configSource.ReplaceAll(proxyCfgs); err != nil {
 		return fmt.Errorf("failed to set config source: %w", err)
 	}
 	aggregator := source.NewAggregator(configSource)

@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/fatedier/frp/client/proxy"
-	"github.com/fatedier/frp/client/visitor"
 	"github.com/fatedier/frp/pkg/auth"
 	v1 "github.com/fatedier/frp/pkg/config/v1"
 	"github.com/fatedier/frp/pkg/msg"
@@ -29,7 +28,6 @@ import (
 	"github.com/fatedier/frp/pkg/transport"
 	"github.com/fatedier/frp/pkg/util/wait"
 	"github.com/fatedier/frp/pkg/util/xlog"
-	"github.com/fatedier/frp/pkg/vnet"
 )
 
 type SessionContext struct {
@@ -45,10 +43,6 @@ type SessionContext struct {
 	Auth *auth.ClientAuth
 	// Connector is used to create message connections to frps.
 	Connector MessageConnector
-	// Virtual net controller
-	VnetController *vnet.Controller
-	// UDPPacketCodec is immutable for the lifetime of this negotiated session.
-	UDPPacketCodec string
 }
 
 type Control struct {
@@ -61,9 +55,6 @@ type Control struct {
 
 	// manage all proxies
 	pm *proxy.Manager
-
-	// manage all visitors
-	vm *visitor.Manager
 
 	doneCh chan struct{}
 
@@ -99,22 +90,15 @@ func NewControl(ctx context.Context, sessionCtx *SessionContext) (*Control, erro
 		sessionCtx.Common,
 		sessionCtx.Auth.EncryptionKey(),
 		ctl.msgTransporter,
-		sessionCtx.VnetController,
-		sessionCtx.UDPPacketCodec,
 	)
-	ctl.vm = visitor.NewManager(ctl.ctx, sessionCtx.RunID, sessionCtx.Common,
-		ctl.connectServer, ctl.msgTransporter, sessionCtx.VnetController, sessionCtx.UDPPacketCodec)
 	return ctl, nil
 }
 
-func (ctl *Control) Run(proxyCfgs []v1.ProxyConfigurer, visitorCfgs []v1.VisitorConfigurer) {
+func (ctl *Control) Run(proxyCfgs []v1.ProxyConfigurer) {
 	go ctl.worker()
 
 	// start all proxies
 	ctl.pm.UpdateAll(proxyCfgs)
-
-	// start all visitors
-	ctl.vm.UpdateAll(visitorCfgs)
 }
 
 func (ctl *Control) SetInWorkConnCallback(cb func(*v1.ProxyBaseConfig, net.Conn, *msg.StartWorkConn) bool) {
@@ -175,17 +159,6 @@ func (ctl *Control) handleNewProxyResp(m msg.Message) {
 	}
 }
 
-func (ctl *Control) handleNatHoleResp(m msg.Message) {
-	xl := ctl.xl
-	inMsg := m.(*msg.NatHoleResp)
-
-	// Dispatch the NatHoleResp message to the related proxy.
-	ok := ctl.msgTransporter.DispatchWithType(inMsg, msg.TypeNameNatHoleResp, inMsg.TransactionID)
-	if !ok {
-		xl.Tracef("dispatch NatHoleResp message to related proxy error")
-	}
-}
-
 func (ctl *Control) handlePong(m msg.Message) {
 	xl := ctl.xl
 	inMsg := m.(*msg.Pong)
@@ -211,7 +184,6 @@ func (ctl *Control) Close() error {
 
 func (ctl *Control) GracefulClose(d time.Duration) error {
 	ctl.pm.Close()
-	ctl.vm.Close()
 
 	time.Sleep(d)
 
@@ -232,7 +204,6 @@ func (ctl *Control) connectServer() (*msg.Conn, error) {
 func (ctl *Control) registerMsgHandlers() {
 	ctl.msgDispatcher.RegisterHandler(&msg.ReqWorkConn{}, msg.AsyncHandler(ctl.handleReqWorkConn))
 	ctl.msgDispatcher.RegisterHandler(&msg.NewProxyResp{}, ctl.handleNewProxyResp)
-	ctl.msgDispatcher.RegisterHandler(&msg.NatHoleResp{}, ctl.handleNatHoleResp)
 	ctl.msgDispatcher.RegisterHandler(&msg.Pong{}, ctl.handlePong)
 }
 
@@ -287,12 +258,10 @@ func (ctl *Control) worker() {
 	ctl.closeSession()
 
 	ctl.pm.Close()
-	ctl.vm.Close()
 	close(ctl.doneCh)
 }
 
-func (ctl *Control) UpdateAllConfigurer(proxyCfgs []v1.ProxyConfigurer, visitorCfgs []v1.VisitorConfigurer) error {
-	ctl.vm.UpdateAll(visitorCfgs)
+func (ctl *Control) UpdateAllConfigurer(proxyCfgs []v1.ProxyConfigurer) error {
 	ctl.pm.UpdateAll(proxyCfgs)
 	return nil
 }

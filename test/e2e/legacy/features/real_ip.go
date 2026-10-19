@@ -4,55 +4,19 @@ import (
 	"bufio"
 	"fmt"
 	"net"
-	"net/http"
-
-	"github.com/onsi/ginkgo/v2"
-	pp "github.com/pires/go-proxyproto"
 
 	"github.com/fatedier/frp/pkg/util/log"
 	"github.com/fatedier/frp/test/e2e/framework"
 	"github.com/fatedier/frp/test/e2e/framework/consts"
-	"github.com/fatedier/frp/test/e2e/mock/server/httpserver"
 	"github.com/fatedier/frp/test/e2e/mock/server/streamserver"
 	"github.com/fatedier/frp/test/e2e/pkg/request"
 	"github.com/fatedier/frp/test/e2e/pkg/rpc"
+	"github.com/onsi/ginkgo/v2"
+	pp "github.com/pires/go-proxyproto"
 )
 
 var _ = ginkgo.Describe("[Feature: Real IP]", func() {
 	f := framework.NewDefaultFramework()
-
-	ginkgo.It("HTTP X-Forwarded-For", func() {
-		vhostHTTPPort := f.AllocPort()
-		serverConf := consts.LegacyDefaultServerConfig + fmt.Sprintf(`
-		vhost_http_port = %d
-		`, vhostHTTPPort)
-
-		localPort := f.AllocPort()
-		localServer := httpserver.New(
-			httpserver.WithBindPort(localPort),
-			httpserver.WithHandler(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-				_, _ = w.Write([]byte(req.Header.Get("X-Forwarded-For")))
-			})),
-		)
-		f.RunServer("", localServer)
-
-		clientConf := consts.LegacyDefaultClientConfig
-		clientConf += fmt.Sprintf(`
-		[test]
-		type = http
-		local_port = %d
-		custom_domains = normal.example.com
-		`, localPort)
-
-		f.RunProcesses(serverConf, []string{clientConf})
-
-		framework.NewRequestExpect(f).Port(vhostHTTPPort).
-			RequestModify(func(r *request.Request) {
-				r.HTTP().HTTPHost("normal.example.com")
-			}).
-			ExpectResp([]byte("127.0.0.1")).
-			Ensure()
-	})
 
 	ginkgo.Describe("Proxy Protocol", func() {
 		ginkgo.It("TCP", func() {
@@ -105,47 +69,5 @@ var _ = ginkgo.Describe("[Feature: Real IP]", func() {
 			})
 		})
 
-		ginkgo.It("HTTP", func() {
-			vhostHTTPPort := f.AllocPort()
-			serverConf := consts.LegacyDefaultServerConfig + fmt.Sprintf(`
-		vhost_http_port = %d
-		`, vhostHTTPPort)
-
-			clientConf := consts.LegacyDefaultClientConfig
-
-			localPort := f.AllocPort()
-			var srcAddrRecord string
-			localServer := streamserver.New(streamserver.TCP, streamserver.WithBindPort(localPort),
-				streamserver.WithCustomHandler(func(c net.Conn) {
-					defer c.Close()
-					rd := bufio.NewReader(c)
-					ppHeader, err := pp.Read(rd)
-					if err != nil {
-						log.Errorf("read proxy protocol error: %v", err)
-						return
-					}
-					srcAddrRecord = ppHeader.SourceAddr.String()
-				}))
-			f.RunServer("", localServer)
-
-			clientConf += fmt.Sprintf(`
-			[test]
-			type = http
-			local_port = %d
-			custom_domains = normal.example.com
-			proxy_protocol_version = v2
-			`, localPort)
-
-			f.RunProcesses(serverConf, []string{clientConf})
-
-			framework.NewRequestExpect(f).Port(vhostHTTPPort).RequestModify(func(r *request.Request) {
-				r.HTTP().HTTPHost("normal.example.com")
-			}).Ensure(framework.ExpectResponseCode(404))
-
-			log.Tracef("proxy protocol get SourceAddr: %s", srcAddrRecord)
-			addr, err := net.ResolveTCPAddr("tcp", srcAddrRecord)
-			framework.ExpectNoError(err, srcAddrRecord)
-			framework.ExpectEqualValues("127.0.0.1", addr.IP.String())
-		})
 	})
 })

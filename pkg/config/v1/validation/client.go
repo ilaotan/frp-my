@@ -23,7 +23,6 @@ import (
 	"github.com/samber/lo"
 
 	v1 "github.com/fatedier/frp/pkg/config/v1"
-	"github.com/fatedier/frp/pkg/policy/featuregate"
 	"github.com/fatedier/frp/pkg/policy/security"
 )
 
@@ -34,7 +33,6 @@ func (v *ConfigValidator) ValidateClientCommonConfig(c *v1.ClientCommonConfig) (
 	)
 
 	validators := []func() (Warning, error){
-		func() (Warning, error) { return validateFeatureGates(c) },
 		func() (Warning, error) { return v.validateAuthConfig(&c.Auth) },
 		func() (Warning, error) { return nil, validateLogConfig(&c.Log) },
 		func() (Warning, error) { return nil, validateWebServerConfig(&c.WebServer) },
@@ -50,52 +48,6 @@ func (v *ConfigValidator) ValidateClientCommonConfig(c *v1.ClientCommonConfig) (
 	return warnings, errs
 }
 
-func validateFeatureGates(c *v1.ClientCommonConfig) (Warning, error) {
-	gates := featuregate.NewFeatureGate()
-	if err := gates.SetFromMap(c.FeatureGates); err != nil {
-		return nil, err
-	}
-
-	if c.VirtualNet.Address != "" {
-		if !gates.Enabled(featuregate.VirtualNet) {
-			return nil, fmt.Errorf("VirtualNet feature is not enabled; enable it by setting the appropriate feature gate flag")
-		}
-	}
-	return nil, nil
-}
-
-// ClientConfigRequirements describes runtime capabilities needed by a client configuration.
-type ClientConfigRequirements struct {
-	VirtualNet bool
-}
-
-// GetClientConfigRequirements returns the runtime capabilities needed by a client configuration.
-func GetClientConfigRequirements(
-	common *v1.ClientCommonConfig,
-	proxyCfgs []v1.ProxyConfigurer,
-	visitorCfgs []v1.VisitorConfigurer,
-) ClientConfigRequirements {
-	requirements := ClientConfigRequirements{}
-	if common != nil && common.VirtualNet.Address != "" {
-		requirements.VirtualNet = true
-	}
-	for _, cfg := range proxyCfgs {
-		if cfg.GetBaseConfig().Plugin.Type == v1.PluginVirtualNet {
-			requirements.VirtualNet = true
-			break
-		}
-	}
-	if !requirements.VirtualNet {
-		for _, cfg := range visitorCfgs {
-			if cfg.GetBaseConfig().Plugin.Type == v1.VisitorPluginVirtualNet {
-				requirements.VirtualNet = true
-				break
-			}
-		}
-	}
-	return requirements
-}
-
 func (v *ConfigValidator) validateAuthConfig(c *v1.AuthClientConfig) (Warning, error) {
 	var errs error
 	if !slices.Contains(SupportedAuthMethods, c.Method) {
@@ -106,38 +58,7 @@ func (v *ConfigValidator) validateAuthConfig(c *v1.AuthClientConfig) (Warning, e
 	}
 
 	errs = AppendError(errs, v.validateAuthTokenSource(c.Token, c.TokenSource))
-
-	if err := v.validateOIDCConfig(&c.OIDC); err != nil {
-		errs = AppendError(errs, err)
-	}
-	if c.Method == v1.AuthMethodOIDC && c.OIDC.TokenSource == nil {
-		if err := ValidateOIDCClientCredentialsConfig(&c.OIDC); err != nil {
-			errs = AppendError(errs, err)
-		}
-	}
 	return nil, errs
-}
-
-func (v *ConfigValidator) validateOIDCConfig(c *v1.AuthOIDCClientConfig) error {
-	if c.TokenSource == nil {
-		return nil
-	}
-	var errs error
-	// Validate oidc.tokenSource mutual exclusivity with other fields of oidc
-	if c.ClientID != "" || c.ClientSecret != "" || c.Audience != "" ||
-		c.Scope != "" || c.TokenEndpointURL != "" || len(c.AdditionalEndpointParams) > 0 ||
-		c.TrustedCaFile != "" || c.InsecureSkipVerify || c.ProxyURL != "" {
-		errs = AppendError(errs, fmt.Errorf("cannot specify both auth.oidc.tokenSource and any other field of auth.oidc"))
-	}
-	if c.TokenSource.Type == "exec" {
-		if err := v.ValidateUnsafeFeature(security.TokenSourceExec); err != nil {
-			errs = AppendError(errs, err)
-		}
-	}
-	if err := c.TokenSource.Validate(); err != nil {
-		errs = AppendError(errs, fmt.Errorf("invalid auth.oidc.tokenSource: %v", err))
-	}
-	return errs
 }
 
 func validateTransportConfig(c *v1.ClientTransportConfig) (Warning, error) {
@@ -196,7 +117,6 @@ func validateIncludeFiles(files []string) (Warning, error) {
 func ValidateAllClientConfig(
 	c *v1.ClientCommonConfig,
 	proxyCfgs []v1.ProxyConfigurer,
-	visitorCfgs []v1.VisitorConfigurer,
 	unsafeFeatures *security.UnsafeFeatures,
 ) (Warning, error) {
 	validator := NewConfigValidator(unsafeFeatures)
@@ -212,12 +132,6 @@ func ValidateAllClientConfig(
 	for _, c := range proxyCfgs {
 		if err := ValidateProxyConfigurerForClient(c); err != nil {
 			return warnings, fmt.Errorf("proxy %s: %v", c.GetBaseConfig().Name, err)
-		}
-	}
-
-	for _, c := range visitorCfgs {
-		if err := ValidateVisitorConfigurer(c); err != nil {
-			return warnings, fmt.Errorf("visitor %s: %v", c.GetBaseConfig().Name, err)
 		}
 	}
 	return warnings, nil

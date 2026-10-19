@@ -19,30 +19,20 @@ func TestBaseSourceLoadReturnsClonedConfigurers(t *testing.T) {
 			Type: "tcp",
 		},
 	}
-	visitorCfg := &v1.STCPVisitorConfig{
-		VisitorBaseConfig: v1.VisitorBaseConfig{
-			Name: "visitor1",
-			Type: "stcp",
-		},
-	}
 
-	err := src.ReplaceAll([]v1.ProxyConfigurer{proxyCfg}, []v1.VisitorConfigurer{visitorCfg})
+	err := src.ReplaceAll([]v1.ProxyConfigurer{proxyCfg})
 	require.NoError(err)
 
-	firstProxies, firstVisitors, err := src.Load()
+	firstProxies, err := src.Load()
 	require.NoError(err)
 	require.Len(firstProxies, 1)
-	require.Len(firstVisitors, 1)
 
 	// Mutate loaded objects as runtime completion would do.
 	firstProxies[0].Complete()
-	firstVisitors[0].Complete()
 
-	secondProxies, secondVisitors, err := src.Load()
+	secondProxies, err := src.Load()
 	require.NoError(err)
 	require.Len(secondProxies, 1)
-	require.Len(secondVisitors, 1)
 
 	require.Empty(secondProxies[0].GetBaseConfig().LocalIP)
-	require.Empty(secondVisitors[0].GetBaseConfig().BindAddr)
 }

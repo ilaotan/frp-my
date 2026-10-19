@@ -17,8 +17,6 @@ package server
 import (
 	"net/http"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-
 	httppkg "github.com/fatedier/frp/pkg/util/http"
 	netpkg "github.com/fatedier/frp/pkg/util/net"
 	adminapi "github.com/fatedier/frp/server/http"
@@ -30,11 +28,6 @@ func (svr *Service) registerRouteHandlers(helper *httppkg.RouterRegisterHelper) 
 
 	subRouter.Use(helper.AuthMiddleware)
 	subRouter.Use(httppkg.NewRequestLogger)
-
-	// metrics
-	if svr.cfg.EnablePrometheus {
-		subRouter.Handle("/metrics", promhttp.Handler())
-	}
 
 	apiController := adminapi.NewController(svr.cfg, svr.clientRegistry, svr.pxyManager)
 

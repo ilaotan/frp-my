@@ -28,8 +28,8 @@ func NewConfigSource() *ConfigSource {
 	}
 }
 
-// ReplaceAll replaces all proxy and visitor configurations atomically.
-func (s *ConfigSource) ReplaceAll(proxies []v1.ProxyConfigurer, visitors []v1.VisitorConfigurer) error {
+// ReplaceAll replaces all proxy configurations atomically.
+func (s *ConfigSource) ReplaceAll(proxies []v1.ProxyConfigurer) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -41,15 +41,6 @@ func (s *ConfigSource) ReplaceAll(proxies []v1.ProxyConfigurer, visitors []v1.Vi
 		}
 		nextProxies[name] = p
 	}
-	nextVisitors := make(map[string]v1.VisitorConfigurer, len(visitors))
-	for _, v := range visitors {
-		name, err := validateVisitorName(v)
-		if err != nil {
-			return err
-		}
-		nextVisitors[name] = v
-	}
 	s.proxies = nextProxies
-	s.visitors = nextVisitors
 	return nil
 }

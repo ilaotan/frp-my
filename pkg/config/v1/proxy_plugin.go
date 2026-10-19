@@ -31,7 +31,6 @@ const (
 	PluginStaticFile       = "static_file"
 	PluginUnixDomainSocket = "unix_domain_socket"
 	PluginTLS2Raw          = "tls2raw"
-	PluginVirtualNet       = "virtual_net"
 )
 
 var clientPluginOptionsTypeMap = map[string]reflect.Type{
@@ -44,7 +43,6 @@ var clientPluginOptionsTypeMap = map[string]reflect.Type{
 	PluginStaticFile:       reflect.TypeFor[StaticFilePluginOptions](),
 	PluginUnixDomainSocket: reflect.TypeFor[UnixDomainSocketPluginOptions](),
 	PluginTLS2Raw:          reflect.TypeFor[TLS2RawPluginOptions](),
-	PluginVirtualNet:       reflect.TypeFor[VirtualNetPluginOptions](),
 }
 
 type ClientPluginOptions interface {
@@ -237,20 +235,6 @@ type TLS2RawPluginOptions struct {
 func (o *TLS2RawPluginOptions) Complete() {}
 
 func (o *TLS2RawPluginOptions) Clone() ClientPluginOptions {
-	if o == nil {
-		return nil
-	}
-	out := *o
-	return &out
-}
-
-type VirtualNetPluginOptions struct {
-	Type string `json:"type,omitempty"`
-}
-
-func (o *VirtualNetPluginOptions) Complete() {}
-
-func (o *VirtualNetPluginOptions) Clone() ClientPluginOptions {
 	if o == nil {
 		return nil
 	}

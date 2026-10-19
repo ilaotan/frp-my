@@ -283,27 +283,6 @@ func (cm *ControlManager) GetByID(runID string) (ctl *Control, ok bool) {
 	return ctl, true
 }
 
-// admitVisitorByRunID commits a visitor admission against the current running
-// control while its run and lifecycle ownership are held. The callback must
-// only perform the in-memory, buffered visitor admission.
-func (cm *ControlManager) admitVisitorByRunID(runID string, admit func(user, wireProtocol, udpPacketCodec string) error) (bool, error) {
-	entry, ok := cm.lockCurrentRun(runID, false)
-	if !ok {
-		return false, nil
-	}
-	defer entry.runMu.Unlock()
-	ctl := entry.ctl
-
-	ctl.lifecycleMu.Lock()
-	defer ctl.lifecycleMu.Unlock()
-	if ctl.state != controlStateRunning {
-		return false, nil
-	}
-	return true, admit(ctl.sessionCtx.LoginMsg.User, ctl.sessionCtx.WireProtocol, ctl.sessionCtx.UDPPacketCodec)
-}
-
-// RegisterWorkConn transfers conn to ctl only if ctl is still the current
-// running generation. On error, ownership remains with the caller.
 func (cm *ControlManager) RegisterWorkConn(ctl *Control, conn *proxy.WorkConn) error {
 	entry, ok := cm.lockCurrentRun(ctl.runID, false)
 	if !ok {
@@ -371,8 +350,7 @@ type SessionContext struct {
 	// server configuration
 	ServerCfg *v1.ServerConfig
 	// negotiated wire protocol for this client session
-	WireProtocol   string
-	UDPPacketCodec string
+	WireProtocol string
 }
 
 type controlState uint8
@@ -727,9 +705,6 @@ func (ctl *Control) worker() {
 func (ctl *Control) registerMsgHandlers() {
 	ctl.msgDispatcher.RegisterHandler(&msg.NewProxy{}, ctl.handleNewProxy)
 	ctl.msgDispatcher.RegisterHandler(&msg.Ping{}, ctl.handlePing)
-	ctl.msgDispatcher.RegisterHandler(&msg.NatHoleVisitor{}, msg.AsyncHandler(ctl.handleNatHoleVisitor))
-	ctl.msgDispatcher.RegisterHandler(&msg.NatHoleClient{}, msg.AsyncHandler(ctl.handleNatHoleClient))
-	ctl.msgDispatcher.RegisterHandler(&msg.NatHoleReport{}, msg.AsyncHandler(ctl.handleNatHoleReport))
 	ctl.msgDispatcher.RegisterHandler(&msg.CloseProxy{}, ctl.handleCloseProxy)
 }
 
@@ -793,21 +768,6 @@ func (ctl *Control) handlePing(m msg.Message) {
 	_ = ctl.msgDispatcher.Send(&msg.Pong{})
 }
 
-func (ctl *Control) handleNatHoleVisitor(m msg.Message) {
-	inMsg := m.(*msg.NatHoleVisitor)
-	ctl.sessionCtx.RC.NatHoleController.HandleVisitor(inMsg, ctl.msgTransporter, ctl.sessionCtx.LoginMsg.User)
-}
-
-func (ctl *Control) handleNatHoleClient(m msg.Message) {
-	inMsg := m.(*msg.NatHoleClient)
-	ctl.sessionCtx.RC.NatHoleController.HandleClient(inMsg, ctl.msgTransporter)
-}
-
-func (ctl *Control) handleNatHoleReport(m msg.Message) {
-	inMsg := m.(*msg.NatHoleReport)
-	ctl.sessionCtx.RC.NatHoleController.HandleReport(inMsg)
-}
-
 func (ctl *Control) handleCloseProxy(m msg.Message) {
 	xl := ctl.xl
 	inMsg := m.(*msg.CloseProxy)
@@ -841,8 +801,6 @@ func (ctl *Control) RegisterProxy(pxyMsg *msg.NewProxy) (remoteAddr string, err 
 		Configurer:         pxyConf,
 		ServerCfg:          ctl.sessionCtx.ServerCfg,
 		EncryptionKey:      ctl.sessionCtx.EncryptionKey,
-		WireProtocol:       ctl.sessionCtx.WireProtocol,
-		UDPPacketCodec:     ctl.sessionCtx.UDPPacketCodec,
 	})
 	if err != nil {
 		return remoteAddr, err

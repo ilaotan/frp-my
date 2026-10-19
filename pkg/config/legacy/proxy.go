@@ -26,27 +26,13 @@ import (
 type ProxyType string
 
 const (
-	ProxyTypeTCP    ProxyType = "tcp"
-	ProxyTypeUDP    ProxyType = "udp"
-	ProxyTypeTCPMUX ProxyType = "tcpmux"
-	ProxyTypeHTTP   ProxyType = "http"
-	ProxyTypeHTTPS  ProxyType = "https"
-	ProxyTypeSTCP   ProxyType = "stcp"
-	ProxyTypeXTCP   ProxyType = "xtcp"
-	ProxyTypeSUDP   ProxyType = "sudp"
+	ProxyTypeTCP ProxyType = "tcp"
 )
 
 // Proxy
 var (
 	proxyConfTypeMap = map[ProxyType]reflect.Type{
-		ProxyTypeTCP:    reflect.TypeFor[TCPProxyConf](),
-		ProxyTypeUDP:    reflect.TypeFor[UDPProxyConf](),
-		ProxyTypeTCPMUX: reflect.TypeFor[TCPMuxProxyConf](),
-		ProxyTypeHTTP:   reflect.TypeFor[HTTPProxyConf](),
-		ProxyTypeHTTPS:  reflect.TypeFor[HTTPSProxyConf](),
-		ProxyTypeSTCP:   reflect.TypeFor[STCPProxyConf](),
-		ProxyTypeXTCP:   reflect.TypeFor[XTCPProxyConf](),
-		ProxyTypeSUDP:   reflect.TypeFor[SUDPProxyConf](),
+		ProxyTypeTCP: reflect.TypeFor[TCPProxyConf](),
 	}
 )
 
@@ -146,9 +132,8 @@ type HealthCheckConf struct {
 type BaseProxyConf struct {
 	// ProxyName is the name of this
 	ProxyName string `ini:"name" json:"name"`
-	// ProxyType specifies the type of this  Valid values include "tcp",
-	// "udp", "http", "https", "stcp", and "xtcp". By default, this value is
-	// "tcp".
+	// ProxyType specifies the type of this  Valid values include "tcp".
+	// By default, this value is "tcp".
 	ProxyType string `ini:"type" json:"type"`
 
 	// UseEncryption controls whether or not communication with the server will
@@ -210,57 +195,6 @@ func (cfg *BaseProxyConf) decorate(_ string, name string, section *ini.Section) 
 	return nil
 }
 
-type DomainConf struct {
-	CustomDomains []string `ini:"custom_domains" json:"custom_domains"`
-	SubDomain     string   `ini:"subdomain" json:"subdomain"`
-}
-
-type RoleServerCommonConf struct {
-	Role       string   `ini:"role" json:"role"`
-	Sk         string   `ini:"sk" json:"sk"`
-	AllowUsers []string `ini:"allow_users" json:"allow_users"`
-}
-
-// HTTP
-type HTTPProxyConf struct {
-	BaseProxyConf `ini:",extends"`
-	DomainConf    `ini:",extends"`
-
-	Locations         []string          `ini:"locations" json:"locations"`
-	HTTPUser          string            `ini:"http_user" json:"http_user"`
-	HTTPPwd           string            `ini:"http_pwd" json:"http_pwd"`
-	HostHeaderRewrite string            `ini:"host_header_rewrite" json:"host_header_rewrite"`
-	Headers           map[string]string `ini:"-" json:"headers"`
-	RouteByHTTPUser   string            `ini:"route_by_http_user" json:"route_by_http_user"`
-}
-
-func (cfg *HTTPProxyConf) UnmarshalFromIni(prefix string, name string, section *ini.Section) error {
-	err := preUnmarshalFromIni(cfg, prefix, name, section)
-	if err != nil {
-		return err
-	}
-
-	// Add custom logic unmarshal if exists
-	cfg.Headers = GetMapWithoutPrefix(section.KeysHash(), "header_")
-	return nil
-}
-
-// HTTPS
-type HTTPSProxyConf struct {
-	BaseProxyConf `ini:",extends"`
-	DomainConf    `ini:",extends"`
-}
-
-func (cfg *HTTPSProxyConf) UnmarshalFromIni(prefix string, name string, section *ini.Section) error {
-	err := preUnmarshalFromIni(cfg, prefix, name, section)
-	if err != nil {
-		return err
-	}
-
-	// Add custom logic unmarshal if exists
-	return nil
-}
-
 // TCP
 type TCPProxyConf struct {
 	BaseProxyConf `ini:",extends"`
@@ -275,100 +209,6 @@ func (cfg *TCPProxyConf) UnmarshalFromIni(prefix string, name string, section *i
 
 	// Add custom logic unmarshal if exists
 
-	return nil
-}
-
-// UDP
-type UDPProxyConf struct {
-	BaseProxyConf `ini:",extends"`
-
-	RemotePort int `ini:"remote_port" json:"remote_port"`
-}
-
-func (cfg *UDPProxyConf) UnmarshalFromIni(prefix string, name string, section *ini.Section) error {
-	err := preUnmarshalFromIni(cfg, prefix, name, section)
-	if err != nil {
-		return err
-	}
-
-	// Add custom logic unmarshal if exists
-
-	return nil
-}
-
-// TCPMux
-type TCPMuxProxyConf struct {
-	BaseProxyConf   `ini:",extends"`
-	DomainConf      `ini:",extends"`
-	HTTPUser        string `ini:"http_user" json:"http_user,omitempty"`
-	HTTPPwd         string `ini:"http_pwd" json:"http_pwd,omitempty"`
-	RouteByHTTPUser string `ini:"route_by_http_user" json:"route_by_http_user"`
-
-	Multiplexer string `ini:"multiplexer"`
-}
-
-func (cfg *TCPMuxProxyConf) UnmarshalFromIni(prefix string, name string, section *ini.Section) error {
-	err := preUnmarshalFromIni(cfg, prefix, name, section)
-	if err != nil {
-		return err
-	}
-
-	// Add custom logic unmarshal if exists
-
-	return nil
-}
-
-// STCP
-type STCPProxyConf struct {
-	BaseProxyConf        `ini:",extends"`
-	RoleServerCommonConf `ini:",extends"`
-}
-
-func (cfg *STCPProxyConf) UnmarshalFromIni(prefix string, name string, section *ini.Section) error {
-	err := preUnmarshalFromIni(cfg, prefix, name, section)
-	if err != nil {
-		return err
-	}
-
-	// Add custom logic unmarshal if exists
-	if cfg.Role == "" {
-		cfg.Role = "server"
-	}
-	return nil
-}
-
-// XTCP
-type XTCPProxyConf struct {
-	BaseProxyConf        `ini:",extends"`
-	RoleServerCommonConf `ini:",extends"`
-}
-
-func (cfg *XTCPProxyConf) UnmarshalFromIni(prefix string, name string, section *ini.Section) error {
-	err := preUnmarshalFromIni(cfg, prefix, name, section)
-	if err != nil {
-		return err
-	}
-
-	// Add custom logic unmarshal if exists
-	if cfg.Role == "" {
-		cfg.Role = "server"
-	}
-	return nil
-}
-
-// SUDP
-type SUDPProxyConf struct {
-	BaseProxyConf        `ini:",extends"`
-	RoleServerCommonConf `ini:",extends"`
-}
-
-func (cfg *SUDPProxyConf) UnmarshalFromIni(prefix string, name string, section *ini.Section) error {
-	err := preUnmarshalFromIni(cfg, prefix, name, section)
-	if err != nil {
-		return err
-	}
-
-	// Add custom logic unmarshal if exists
 	return nil
 }
 

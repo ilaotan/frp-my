@@ -332,34 +332,26 @@ type ClientConfigLoadResult struct {
 	// These are NOT completed (user prefix not added).
 	Proxies []v1.ProxyConfigurer
 
-	// Visitors contains visitor configurations from inline [[visitors]] and includeConfigFiles.
-	// These are NOT completed.
-	Visitors []v1.VisitorConfigurer
-
 	// IsLegacyFormat indicates whether the config file is in legacy INI format.
 	IsLegacyFormat bool
 }
 
 // LoadClientConfigResult loads and parses a client configuration file.
-// It returns the raw configuration without completing proxies/visitors.
+// It returns the raw configuration without completing proxies.
 // The caller should call Complete on the configs manually for legacy behavior.
 func LoadClientConfigResult(path string, strict bool) (*ClientConfigLoadResult, error) {
 	result := &ClientConfigLoadResult{
-		Proxies:  make([]v1.ProxyConfigurer, 0),
-		Visitors: make([]v1.VisitorConfigurer, 0),
+		Proxies: make([]v1.ProxyConfigurer, 0),
 	}
 
 	if DetectLegacyINIFormatFromFile(path) {
-		legacyCommon, legacyProxyCfgs, legacyVisitorCfgs, err := legacy.ParseClientConfig(path)
+		legacyCommon, legacyProxyCfgs, err := legacy.ParseClientConfig(path)
 		if err != nil {
 			return nil, err
 		}
 		result.Common = legacy.Convert_ClientCommonConf_To_v1(&legacyCommon)
 		for _, c := range legacyProxyCfgs {
 			result.Proxies = append(result.Proxies, legacy.Convert_ProxyConf_To_v1(c))
-		}
-		for _, c := range legacyVisitorCfgs {
-			result.Visitors = append(result.Visitors, legacy.Convert_VisitorConf_To_v1(c))
 		}
 		result.IsLegacyFormat = true
 	} else {
@@ -371,20 +363,16 @@ func LoadClientConfigResult(path string, strict bool) (*ClientConfigLoadResult, 
 		for _, c := range allCfg.Proxies {
 			result.Proxies = append(result.Proxies, c.ProxyConfigurer)
 		}
-		for _, c := range allCfg.Visitors {
-			result.Visitors = append(result.Visitors, c.VisitorConfigurer)
-		}
 	}
 
 	// Load additional config from includes.
 	// legacy ini format already handle this in ParseClientConfig.
 	if len(result.Common.IncludeConfigFiles) > 0 && !result.IsLegacyFormat {
-		extProxyCfgs, extVisitorCfgs, err := LoadAdditionalClientConfigs(result.Common.IncludeConfigFiles, result.IsLegacyFormat, strict)
+		extProxyCfgs, err := LoadAdditionalClientConfigs(result.Common.IncludeConfigFiles, strict)
 		if err != nil {
 			return nil, err
 		}
 		result.Proxies = append(result.Proxies, extProxyCfgs...)
-		result.Visitors = append(result.Visitors, extVisitorCfgs...)
 	}
 
 	// Complete the common config
@@ -394,7 +382,7 @@ func LoadClientConfigResult(path string, strict bool) (*ClientConfigLoadResult, 
 		}
 	}
 
-	if err := validateNoDuplicateNames(result.Proxies, result.Visitors); err != nil {
+	if err := validateNoDuplicateNames(result.Proxies); err != nil {
 		return nil, err
 	}
 
@@ -404,27 +392,22 @@ func LoadClientConfigResult(path string, strict bool) (*ClientConfigLoadResult, 
 func LoadClientConfig(path string, strict bool) (
 	*v1.ClientCommonConfig,
 	[]v1.ProxyConfigurer,
-	[]v1.VisitorConfigurer,
 	bool, error,
 ) {
 	result, err := LoadClientConfigResult(path, strict)
 	if err != nil {
-		return nil, nil, nil, result != nil && result.IsLegacyFormat, err
+		return nil, nil, result != nil && result.IsLegacyFormat, err
 	}
 
-	proxyCfgs := result.Proxies
-	visitorCfgs := result.Visitors
-
-	proxyCfgs, visitorCfgs = FilterClientConfigurers(result.Common, proxyCfgs, visitorCfgs)
+	proxyCfgs := FilterClientConfigurers(result.Common, result.Proxies)
 	proxyCfgs = CompleteProxyConfigurers(proxyCfgs)
-	visitorCfgs = CompleteVisitorConfigurers(visitorCfgs)
-	return result.Common, proxyCfgs, visitorCfgs, result.IsLegacyFormat, nil
+	return result.Common, proxyCfgs, result.IsLegacyFormat, nil
 }
 
-// validateNoDuplicateNames rejects proxies or visitors that share a name. They are
+// validateNoDuplicateNames rejects proxies that share a name. They are
 // keyed by name in the config sources, so a duplicate would otherwise be silently
 // overwritten and never started, with no error or log.
-func validateNoDuplicateNames(proxies []v1.ProxyConfigurer, visitors []v1.VisitorConfigurer) error {
+func validateNoDuplicateNames(proxies []v1.ProxyConfigurer) error {
 	proxyNames := make(map[string]struct{}, len(proxies))
 	for _, p := range proxies {
 		name := p.GetBaseConfig().Name
@@ -432,15 +415,6 @@ func validateNoDuplicateNames(proxies []v1.ProxyConfigurer, visitors []v1.Visito
 			return fmt.Errorf("proxy name [%s] is duplicated", name)
 		}
 		proxyNames[name] = struct{}{}
-	}
-
-	visitorNames := make(map[string]struct{}, len(visitors))
-	for _, v := range visitors {
-		name := v.GetBaseConfig().Name
-		if _, ok := visitorNames[name]; ok {
-			return fmt.Errorf("visitor name [%s] is duplicated", name)
-		}
-		visitorNames[name] = struct{}{}
 	}
 
 	return nil
@@ -454,34 +428,21 @@ func CompleteProxyConfigurers(proxies []v1.ProxyConfigurer) []v1.ProxyConfigurer
 	return proxyCfgs
 }
 
-func CompleteVisitorConfigurers(visitors []v1.VisitorConfigurer) []v1.VisitorConfigurer {
-	visitorCfgs := visitors
-	for _, c := range visitorCfgs {
-		c.Complete()
-	}
-	return visitorCfgs
-}
-
 func FilterClientConfigurers(
 	common *v1.ClientCommonConfig,
 	proxies []v1.ProxyConfigurer,
-	visitors []v1.VisitorConfigurer,
-) ([]v1.ProxyConfigurer, []v1.VisitorConfigurer) {
+) []v1.ProxyConfigurer {
 	if common == nil {
 		common = &v1.ClientCommonConfig{}
 	}
 
 	proxyCfgs := proxies
-	visitorCfgs := visitors
 
 	// Filter by start across merged configurers from all sources.
 	// For example, store entries are also filtered by this set.
 	if len(common.Start) > 0 {
 		startSet := sets.New(common.Start...)
 		proxyCfgs = lo.Filter(proxyCfgs, func(c v1.ProxyConfigurer, _ int) bool {
-			return startSet.Has(c.GetBaseConfig().Name)
-		})
-		visitorCfgs = lo.Filter(visitorCfgs, func(c v1.VisitorConfigurer, _ int) bool {
 			return startSet.Has(c.GetBaseConfig().Name)
 		})
 	}
@@ -492,27 +453,22 @@ func FilterClientConfigurers(
 		enabled := c.GetBaseConfig().Enabled
 		return enabled == nil || *enabled
 	})
-	visitorCfgs = lo.Filter(visitorCfgs, func(c v1.VisitorConfigurer, _ int) bool {
-		enabled := c.GetBaseConfig().Enabled
-		return enabled == nil || *enabled
-	})
-	return proxyCfgs, visitorCfgs
+	return proxyCfgs
 }
 
-func LoadAdditionalClientConfigs(paths []string, isLegacyFormat bool, strict bool) ([]v1.ProxyConfigurer, []v1.VisitorConfigurer, error) {
+func LoadAdditionalClientConfigs(paths []string, strict bool) ([]v1.ProxyConfigurer, error) {
 	proxyCfgs := make([]v1.ProxyConfigurer, 0)
-	visitorCfgs := make([]v1.VisitorConfigurer, 0)
 	for _, path := range paths {
 		absDir, err := filepath.Abs(filepath.Dir(path))
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if _, err := os.Stat(absDir); os.IsNotExist(err) {
-			return nil, nil, err
+			return nil, err
 		}
 		files, err := os.ReadDir(absDir)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		for _, fi := range files {
 			if fi.IsDir() {
@@ -523,16 +479,13 @@ func LoadAdditionalClientConfigs(paths []string, isLegacyFormat bool, strict boo
 				// support yaml/json/toml
 				cfg := v1.ClientConfig{}
 				if err := LoadConfigureFromFile(absFile, &cfg, strict); err != nil {
-					return nil, nil, fmt.Errorf("load additional config from %s error: %v", absFile, err)
+					return nil, fmt.Errorf("load additional config from %s error: %v", absFile, err)
 				}
 				for _, c := range cfg.Proxies {
 					proxyCfgs = append(proxyCfgs, c.ProxyConfigurer)
 				}
-				for _, c := range cfg.Visitors {
-					visitorCfgs = append(visitorCfgs, c.VisitorConfigurer)
-				}
 			}
 		}
 	}
-	return proxyCfgs, visitorCfgs, nil
+	return proxyCfgs, nil
 }
